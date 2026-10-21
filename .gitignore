@@ -16,3 +16,10 @@ __pycache__/
 # Editor and system files
 .vscode/
 .DS_Store
+
+# Local development backups
+*.day9-backup
+
+# Local test-user scripts (do not deploy)
+backend/app/create_test_user.py
+backend/app/create_recruiter_test_user.py
