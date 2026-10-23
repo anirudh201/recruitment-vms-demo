@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db_dependencies import get_db
 from app.dependencies import get_current_user, require_permission
-from app.models import Job, JobVendorAssignment, User, Vendor
+from app.models import Client, Job, JobVendorAssignment, User, Vendor
 
 
 router = APIRouter(prefix="/jobs", tags=["Job Management"])
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/jobs", tags=["Job Management"])
 
 class JobCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    client_id: int | None = Field(default=None, gt=0)
     description: str = Field(min_length=1)
     mandatory_skills: str | None = None
     preferred_skills: str | None = None
@@ -45,6 +46,7 @@ class JobCreate(BaseModel):
 
 class JobUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
+    client_id: int | None = Field(default=None, gt=0)
     description: str | None = Field(default=None, min_length=1)
     mandatory_skills: str | None = None
     preferred_skills: str | None = None
@@ -65,6 +67,7 @@ class JobResponse(BaseModel):
     id: int
     organization_id: int
     created_by_user_id: int
+    client_id: int | None
     title: str
     description: str
     mandatory_skills: str | None
@@ -136,7 +139,17 @@ def create_job(
             status_code=422,
             detail="budget_max cannot be less than budget_min",
         )
+    if payload.client_id is not None:
+        client = db.get(Client, payload.client_id)
 
+        if (
+            client is None
+            or client.organization_id != current_user.organization_id
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Client not found in your organization",
+            )
     job = Job(
         organization_id=current_user.organization_id,
         created_by_user_id=current_user.id,
@@ -187,6 +200,18 @@ def update_job(
         raise HTTPException(status_code=404, detail="Job not found")
 
     changes = payload.model_dump(exclude_unset=True)
+
+    if "client_id" in changes and changes["client_id"] is not None:
+        client = db.get(Client, changes["client_id"])
+
+        if (
+            client is None
+            or client.organization_id != current_user.organization_id
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Client not found in your organization",
+            )
 
     min_experience = changes.get("min_experience", job.min_experience)
     max_experience = changes.get("max_experience", job.max_experience)

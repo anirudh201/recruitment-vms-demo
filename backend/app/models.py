@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     func,
@@ -53,7 +53,71 @@ class Organization(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+class Client(Base):
+    __tablename__ = "clients"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "company_name",
+            name="uq_clients_organization_company_name",
+        ),
+    )
 
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    company_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    contacts: Mapped[list["ClientContact"]] = relationship(
+        back_populates="client",
+        cascade="all, delete-orphan",
+    )
+    jobs: Mapped[list["Job"]] = relationship(back_populates="client")
+
+class ClientContact(Base):
+    __tablename__ = "client_contacts"
+    __table_args__ = (
+        CheckConstraint(
+            "contact_type IN ('HR', 'FINANCE', 'OTHER')",
+            name="contact_type_valid",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    client: Mapped["Client"] = relationship(back_populates="contacts")
 
 class User(Base):
     __tablename__ = "users"
@@ -148,6 +212,11 @@ class Job(Base):
     created_by_user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    client_id: Mapped[int | None] = mapped_column(
+        ForeignKey("clients.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     mandatory_skills: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -184,7 +253,7 @@ class Job(Base):
     assignments: Mapped[list["JobVendorAssignment"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
-
+    client: Mapped["Client | None"] = relationship(back_populates="jobs")
 
 class JobVendorAssignment(Base):
     __tablename__ = "job_vendor_assignments"

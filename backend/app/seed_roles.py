@@ -14,6 +14,7 @@ ROLES = {
 PERMISSIONS = {
     "users.manage": "Create and manage user accounts",
     "vendors.manage": "Create and manage vendor profiles",
+    "clients.manage": "Create and manage client profiles and contacts",
     "jobs.view": "View authorized job requirements",
     "jobs.manage": "Create, edit, publish, close, and assign jobs",
     "candidates.view": "View candidates permitted to the current user",
