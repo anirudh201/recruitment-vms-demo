@@ -7,6 +7,8 @@ from app.users import router as users_router
 from app.jobs import router as jobs_router
 from app.vendors import router as vendors_router
 from app.clients import router as clients_router
+from app.candidates import router as candidates_router
+from app.recruiters import router as recruiters_router
 
 app = FastAPI(
     title="Recruitment VMS API",
@@ -37,3 +39,5 @@ def health_check():
         "status": "ok",
         "application": "Recruitment VMS",
     }
+app.include_router(candidates_router)
+app.include_router(recruiters_router)

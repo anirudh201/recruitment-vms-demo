@@ -129,7 +129,24 @@ class User(Base):
     vendor_id: Mapped[int | None] = mapped_column(
         ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Set for client-company logins (Client role); they only see their own company's data.
+    client_id: Mapped[int | None] = mapped_column(
+        ForeignKey("clients.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
+    # Shown on recruiter cards and in the app; optional for older accounts.
+    full_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -137,6 +154,7 @@ class User(Base):
         secondary=user_roles, back_populates="users"
     )
     vendor: Mapped["Vendor | None"] = relationship(back_populates="users")
+    client: Mapped["Client | None"] = relationship()
 
 
 class Role(Base):
@@ -250,10 +268,25 @@ class Job(Base):
     nullable=False,
 )
 
+    # Original uploaded JD document (PDF/DOCX). Only the generated storage name is
+    # kept on disk; the user's file name is stored separately for display/download.
+    jd_file_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    jd_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    jd_content_type: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
     assignments: Mapped[list["JobVendorAssignment"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+    # The recruiter who owns this requirement (their closures are counted from it).
+    recruiter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Deactivated jobs are hidden everywhere except from job managers, and can be reactivated.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
     client: Mapped["Client | None"] = relationship(back_populates="jobs")
+    recruiter: Mapped["User | None"] = relationship(foreign_keys="Job.recruiter_id")
 
 class JobVendorAssignment(Base):
     __tablename__ = "job_vendor_assignments"
@@ -283,3 +316,166 @@ class JobVendorAssignment(Base):
 
     job: Mapped["Job"] = relationship(back_populates="assignments")
     vendor: Mapped["Vendor"] = relationship(back_populates="assignments")
+
+
+# Candidate Management
+CANDIDATE_STATUSES = (
+    "Submitted",
+    "Screening",
+    "Shortlisted",
+    "Sent to Client",
+    "Interview Scheduled",
+    "Selected",
+    "Offer Accepted",
+    "Joined",
+    "Rejected",
+    "Withdrawn",
+    "Offer Declined",
+)
+
+
+class Candidate(Base):
+    """A candidate profile that can be submitted to multiple jobs."""
+
+    __tablename__ = "candidates"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "email",
+            name="uq_candidates_organization_email",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    total_experience: Mapped[float | None] = mapped_column(nullable=True)
+    relevant_experience: Mapped[float | None] = mapped_column(nullable=True)
+    current_employer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    current_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    highest_qualification: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    primary_skills: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resume_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    submissions: Mapped[list["CandidateSubmission"]] = relationship(
+        back_populates="candidate",
+        cascade="all, delete-orphan",
+    )
+
+
+class CandidateSubmission(Base):
+    """A candidate's submission to one job by one vendor or recruiter."""
+
+    __tablename__ = "candidate_submissions"
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_id",
+            "job_id",
+            name="uq_candidate_submissions_candidate_job",
+        ),
+        CheckConstraint(
+            "status IN ('Submitted', 'Screening', 'Shortlisted', 'Sent to Client', "
+            "'Interview Scheduled', 'Selected', 'Offer Accepted', 'Joined', "
+            "'Rejected', 'Withdrawn', 'Offer Declined')",
+            name="candidate_submission_status_valid",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    candidate_id: Mapped[int] = mapped_column(
+        ForeignKey("candidates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    vendor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vendors.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    submitted_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(30), default="Submitted", server_default=text("'Submitted'"), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Uploaded resume (PDF/DOCX) for this submission. Stored per submission so one partner's
+    # file never overwrites another's for the same candidate.
+    resume_file_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    resume_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    resume_content_type: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="submissions")
+    job: Mapped["Job"] = relationship()
+    vendor: Mapped["Vendor | None"] = relationship()
+    status_history: Mapped[list["CandidateStatusHistory"]] = relationship(
+        back_populates="submission",
+        cascade="all, delete-orphan",
+        order_by="CandidateStatusHistory.changed_at",
+    )
+
+
+class CandidateStatusHistory(Base):
+    """Audit trail for every candidate submission status change."""
+
+    __tablename__ = "candidate_status_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    submission_id: Mapped[int] = mapped_column(
+        ForeignKey("candidate_submissions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    old_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    changed_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    submission: Mapped["CandidateSubmission"] = relationship(
+        back_populates="status_history"
+    )

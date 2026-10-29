@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_dependencies import get_db
-from app.dependencies import require_permission
+from app.dependencies import require_any_permission, require_permission
 from app.models import Client, ClientContact, User
 
 
@@ -171,7 +171,7 @@ def create_client(
 @router.get("", response_model=list[ClientResponse])
 def list_clients(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("clients.manage")),
+    current_user: User = Depends(require_any_permission("clients.manage", "clients.view")),
 ):
     return db.scalars(
         select(Client)
@@ -184,7 +184,7 @@ def list_clients(
 def get_client(
     client_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("clients.manage")),
+    current_user: User = Depends(require_any_permission("clients.manage", "clients.view")),
 ):
     return get_client_for_organization(
         db, client_id, current_user.organization_id

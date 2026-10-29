@@ -9,12 +9,16 @@ ROLES = {
     "Super Admin": "Full administrative access to the VMS",
     "Recruiter": "Manage recruitment activities and candidate progress",
     "Vendor": "Access assigned jobs and permitted candidate submissions",
+    "Client": "Client company users who review candidates sent to them",
 }
 
 PERMISSIONS = {
     "users.manage": "Create and manage user accounts",
     "vendors.manage": "Create and manage vendor profiles",
     "clients.manage": "Create and manage client profiles and contacts",
+    "clients.view": "View client profiles and contacts",
+    "vendors.view": "View vendor (channel partner) profiles",
+    "candidates.client_review": "Accept or reject candidates sent to the user's own client company",
     "jobs.view": "View authorized job requirements",
     "jobs.manage": "Create, edit, publish, close, and assign jobs",
     "candidates.view": "View candidates permitted to the current user",
@@ -30,6 +34,8 @@ ROLE_PERMISSION_CODES = {
     "Super Admin": set(PERMISSIONS.keys()),
     "Recruiter": {
         "jobs.view",
+        "clients.view",
+        "vendors.view",
         "candidates.view",
         "candidates.review",
         "candidates.status.update",
@@ -40,6 +46,11 @@ ROLE_PERMISSION_CODES = {
         "jobs.view",
         "candidates.view",
         "candidates.submit",
+    },
+    "Client": {
+        "jobs.view",
+        "candidates.view",
+        "candidates.client_review",
     },
 }
 
