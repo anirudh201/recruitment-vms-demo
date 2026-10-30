@@ -1,0 +1,66 @@
+
+# Python virtual environments
+.venv/
+
+# Python cache and tests
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Editor and system files
+.vscode/
+.DS_Store
+
+# Local development backups
+*.day9-backup
+
+# Local test-user scripts (do not deploy)
+backend/app/create_test_user.py
+backend/app/create_recruiter_test_user.py
+
+# Node.js dependencies and build output
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+build/
+
+# Local databases and database backups
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+
+# Logs and coverage
+*.log
+coverage/
+htmlcov/
+.coverage
+
+# Private keys and certificates
+*.pem
+*.key
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Temporary model backup
+backend/app/models.py.client-backup
+
+# OpenAPI inspection output
+openapi-check.json
+
+# Uploaded JD documents (user data, not source code)
+backend/uploads/

@@ -1,0 +1,1122 @@
+
+#root {
+  min-height: 100vh;
+}
+
+.vms-app {
+  display: flex;
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+}
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #142b49;
+  color: white;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.sidebar-brand {
+  width: 100%;
+  height: 112px;
+  margin: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+  background: transparent;
+}
+
+.sidebar-brand img {
+  display: block;
+  width: 100%;
+  max-width: 184px;
+  height: 108px;
+  object-fit: contain;
+  object-position: left center;
+  background: transparent;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar nav a {
+  color: #dce6f3;
+  text-decoration: none;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.sidebar nav a:hover {
+  background: #254c77;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 32px;
+  background: #f4f7fb;
+}
+
+.page-header h1 {
+  color: #142b49;
+  margin: 0;
+}
+
+.page-header p {
+  color: #64748b;
+}
+
+.welcome-card {
+  background: white;
+  padding: 28px;
+  border-radius: 12px;
+  margin-top: 24px;
+  box-shadow: 0 2px 8px #0000000d;
+}
+
+@media (max-width: 650px) {
+  .vms-app {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .main-content {
+    padding: 20px;
+  }
+}
+
+.welcome-card h2 {
+  color: #142b49;
+  font-size: 22px;
+  margin-top: 0;
+}
+
+.welcome-card p {
+  color: #475569;
+  line-height: 1.6;
+}
+
+
+/* Dashboard Statistics */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 28px;
+}
+
+.stat-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.stat-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0 0 14px;
+}
+
+.stat-card-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #142b49;
+  margin: 0 0 10px;
+}
+
+.stat-card-description {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Tablet */
+
+@media (max-width: 1100px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Mobile */
+
+@media (max-width: 600px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f4f7fb;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px #142b4914;
+}
+
+.login-card h1 {
+  margin: 0;
+  color: #142b49;
+  font-size: 28px;
+  letter-spacing: normal;
+}
+
+.login-card p {
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.login-card label {
+  margin-top: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font: inherit;
+  color: #142b49;
+  background: #fff;
+}
+
+.login-card button,
+.welcome-card button,
+.logout-button {
+  padding: 11px 16px;
+  border: 0;
+  border-radius: 7px;
+  background: #142b49;
+  color: white;
+  font: inherit;
+  cursor: pointer;
+}
+
+.login-card button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.error-message {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.logout-button {
+  margin-top: 32px;
+  width: 100%;
+  background: #254c77;
+}
+
+.sidebar nav a.active {
+  background: #254c77;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.jobs-card {
+  overflow: hidden;
+}
+
+.jobs-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.jobs-heading h2 {
+  margin: 0;
+  color: #142b49;
+  font-size: 22px;
+}
+
+.jobs-heading p {
+  margin-bottom: 0;
+  color: #64748b;
+}
+
+.jobs-heading button {
+  flex-shrink: 0;
+}
+
+.jobs-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.jobs-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.jobs-table th,
+.jobs-table td {
+  padding: 15px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 14px;
+}
+
+.jobs-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.jobs-table td:first-child {
+  min-width: 200px;
+}
+
+.job-id {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.job-status {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #eaf0f8;
+  color: #254c77;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .jobs-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Client Management Layout */
+
+.client-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 28px;
+  row-gap: 16px;
+  margin-top: 24px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+/* Form heading spans both columns */
+.client-form > h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* Main company fields */
+.client-form > label {
+  grid-column: auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+}
+
+.client-form > input,
+.client-form > textarea,
+.client-form > select {
+  grid-column: auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-self: stretch;
+}
+
+/* Contact section spans both columns */
+.client-form > fieldset {
+  grid-column: 1 / -1;
+}
+
+/* Responsive layout for smaller screens */
+@media (max-width: 768px) {
+  .client-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-form > h3,
+  .client-form > fieldset {
+    grid-column: 1;
+  }
+}
+
+.client-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.client-form input,
+.client-form textarea,
+.client-form select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #142b49;
+  font: inherit;
+}
+
+.client-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.client-form .contact-fieldset {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.client-form .contact-fieldset legend {
+  padding: 0 8px;
+  color: #142b49;
+  font-weight: 700;
+}
+
+.client-form .checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.client-form .checkbox-label input {
+  width: auto;
+}
+
+.form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.client-form button,
+.jobs-heading button,
+.jobs-table button,
+.client-contact-list button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: #142b49;
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.client-form button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.success-message {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+/* Client contacts: keep each contact and its button together */
+
+.client-contact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+}
+
+.client-contact-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.client-contact-details {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+
+.client-contact-details strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #142b49;
+}
+
+.client-contact-details span {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.client-notes {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* Client table */
+
+.clients-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.clients-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.clients-table th,
+.clients-table td {
+  padding: 16px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: middle;
+  color: #334155;
+  font-size: 14px;
+}
+
+.clients-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.client-company-name {
+  display: block;
+  color: #142b49;
+  font-weight: 700;
+}
+
+.client-status {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #eaf0f8;
+  color: #254c77;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .client-form {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .client-form .contact-fieldset,
+  .form-actions {
+    grid-column: 1;
+  }
+
+  .client-contact-item {
+    grid-template-columns: 1fr;
+  }
+
+  .client-contact-list {
+    min-width: 260px;
+  }
+}
+
+.client-contact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 320px;
+}
+
+.client-contact-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.client-contact-details {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.client-contact-details strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #142b49;
+}
+
+.client-contact-details span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.client-contact-item button {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: #254c77;
+  color: #ffffff;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.client-contact-item button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.client-contact-list + button {
+  width: auto;
+}
+
+.client-contact-list {
+  margin-top: 8px;
+}
+
+.client-contact-item button {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.client-contact-item {
+  margin-bottom: 4px;
+}
+
+.client-contact-list {
+  min-width: 0;
+}
+
+td > button[ type="button" ] {
+  width: auto;
+  display: inline-block;
+  padding: 7px 12px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.add-contact-button {
+  display: inline-block !important;
+  width: auto !important;
+  min-width: 130px;
+  padding: 8px 14px !important;
+  margin-bottom: 8px;
+  font-size: 13px !important;
+}
+.client-contact-list .add-contact-button {
+  display: inline-block !important;
+  width: auto !important;
+  min-width: 130px;
+  max-width: fit-content;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+}
+
+/* Client Search and Filters */
+.client-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.client-filters input,
+.client-filters select {
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.client-filters input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.client-filters select {
+  min-width: 160px;
+  cursor: pointer;
+}
+
+.client-filters input:focus,
+.client-filters select:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #2563eb;
+}
+
+.client-filters button {
+  min-height: 42px;
+  padding: 10px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #374151;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.client-filters button:hover {
+  background: #e5e7eb;
+}
+
+/* Vendor registration form alignment */
+.client-form label {
+  display: block;
+  text-align: left;
+  margin: 0;
+  align-self: end;
+}
+
+.client-form input,
+.client-form select,
+.client-form textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.client-form h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* Keep vendor labels close to their input fields */
+.client-form label[for^="vendor-"] {
+  grid-column: 1 / -1;
+  margin-bottom: -14px;
+  align-self: end;
+}
+
+.client-form input[id^="vendor-"] {
+  grid-column: 1 / -1;
+}
+/* Make vendor registration fields more compact */
+.client-form input[id^="vendor-"] {
+  width: 100%;
+  max-width: 650px;
+  justify-self: start;
+}
+
+.client-form label[for^="vendor-"] {
+  width: 100%;
+  max-width: 650px;
+  justify-self: start;
+}
+
+/* Vendor directory action buttons */
+.client-form ~ .vendor-actions {
+  gap: 10px;
+}
+
+button {
+  white-space: nowrap;
+}
+
+.vendor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.vendor-actions button {
+  width: auto;
+  min-width: 120px;
+  padding: 10px 14px;
+  flex: 0 0 auto;
+}
+
+/* Fix spacing and sizing of vendor action buttons */
+.vendor-heading-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vendor-heading-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 9px 14px;
+  margin: 0;
+}
+
+/* Client form layout fixes */
+.client-form > label {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 0 -12px 0;
+  align-self: end;
+  text-align: left;
+}
+
+.client-form > input,
+.client-form > textarea,
+.client-form > select {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 500px;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-self: start;
+}
+
+/* Keep the client form heading across the full width */
+.client-form > h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* Improve spacing inside the contact fieldset */
+.client-form fieldset {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.client-form fieldset label {
+  margin: 0;
+}
+
+.client-form fieldset input,
+.client-form fieldset select {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 6px 0;
+}
+
+/* Keep the contact checkbox compact */
+.client-form fieldset input[type="checkbox"] {
+  width: auto;
+  margin: 0 6px 0 0;
+}
+
+/* Fix alignment inside the Initial Contact section */
+.client-form fieldset {
+  align-items: stretch;
+  text-align: left;
+  gap: 6px;
+}
+
+.client-form fieldset label {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 0 0 4px 0;
+}
+
+.client-form fieldset input:not([type="checkbox"]),
+.client-form fieldset select {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 10px 0;
+}
+
+/* Keep Primary contact checkbox and text on the left */
+.client-form fieldset label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: fit-content;
+  margin-top: 2px;
+}
+
+.client-form fieldset input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+/* Make contact fields compact and consistent */
+.client-form fieldset {
+  display: grid;
+  grid-template-columns: minmax(220px, 500px);
+  justify-content: start;
+  gap: 8px;
+  text-align: left;
+}
+
+.client-form fieldset label {
+  text-align: left;
+  margin: 0;
+}
+
+.client-form fieldset input:not([type="checkbox"]),
+.client-form fieldset select {
+  width: 100%;
+  max-width: 300px;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 0 8px 0;
+}
+
+.client-form fieldset label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-top: 4px;
+}
+
+.client-form fieldset input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+
+.client-form > .contact-fieldset {
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.client-form > .form-actions {
+  grid-column: 1 / -1;
+}
+
+.stat-card-clickable {
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.stat-card-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card-clickable:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+
+/* Job Requirement form layout improvements */
+.jobs-card {
+  min-width: 0;
+}
+
+.jobs-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.jobs-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.job-form {
+  display: block;
+  margin: 1.25rem 0 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.job-form h3 {
+  margin: 0 0 1.1rem;
+  color: #17345a;
+  font-size: 1.15rem;
+}
+
+.job-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem 1.1rem;
+  align-items: start;
+}
+
+.job-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.job-form-grid input,
+.job-form-grid select,
+.job-form-grid textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #172b4d;
+  font: inherit;
+  font-weight: 400;
+  box-sizing: border-box;
+}
+
+.job-form-grid textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.job-form-grid input:focus,
+.job-form-grid select:focus,
+.job-form-grid textarea:focus {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+  border-color: #2563eb;
+}
+
+.job-form-actions {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 1.2rem;
+}
+
+.job-form-actions button {
+  min-width: 100px;
+}
+
+@media (max-width: 900px) {
+  .job-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .job-form {
+    padding: 1rem;
+  }
+
+  .job-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .jobs-actions,
+  .jobs-actions button {
+    width: 100%;
+  }
+}
+
+
+/* Job table and details dialog */
+.jobs-table-wrapper { width: 100%; overflow-x: auto; }
+.jobs-table { width: 100%; min-width: 1050px; border-collapse: collapse; }
+.jobs-table th, .jobs-table td { padding: 14px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #dce4ef; }
+.jobs-table th { background: #f6f8fb; color: #536783; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.jobs-table td { color: #172f50; font-size: 14px; }
+.job-view-button { padding: 8px 12px; border: 0; border-radius: 6px; background: #173153; color: #fff; cursor: pointer; white-space: nowrap; }
+.job-view-button:hover { background: #24486f; }
+.job-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(10, 24, 43, .58); }
+.job-details-modal { width: min(900px, 100%); max-height: 90vh; overflow-y: auto; padding: 26px; border-radius: 14px; background: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.25); }
+.job-details-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid #e1e8f0; }
+.job-details-heading h2 { margin: 0 0 6px; color: #173153; }
+.job-details-heading p { margin: 0; color: #687b93; }
+.job-modal-close { border: 0; background: transparent; color: #405570; font-size: 28px; line-height: 1; cursor: pointer; }
+.job-details-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.job-detail-item { min-width: 0; padding: 13px 14px; border: 1px solid #e1e8f0; border-radius: 8px; background: #fbfcfe; overflow-wrap: anywhere; }
+.job-detail-item span { display: block; margin-bottom: 7px; color: #667a93; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.job-detail-item p { margin: 0; color: #173153; white-space: pre-wrap; line-height: 1.5; }
+.job-detail-wide { grid-column: span 3; }
+@media (max-width: 800px) { .job-details-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .job-detail-wide { grid-column: span 2; } }
+@media (max-width: 520px) { .job-modal-backdrop { padding: 10px; } .job-details-modal { padding: 18px; } .job-details-grid { grid-template-columns: 1fr; } .job-detail-wide { grid-column: span 1; } }
