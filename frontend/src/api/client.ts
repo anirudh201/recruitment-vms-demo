@@ -1,5 +1,5 @@
 
-const API_BASE_URL = 'https://recruitment-vms-demo-1.onrender.com'
+const API_BASE_URL = 'https://recruitment-vms-demo.onrender.com'
 
 export type LoginResponse = {
   access_token: string
