@@ -7,6 +7,9 @@ from app.users import router as users_router
 from app.jobs import router as jobs_router
 from app.vendors import router as vendors_router
 from app.clients import router as clients_router
+from app.candidates import router as candidates_router
+from app.recruiters import router as recruiters_router
+from app.reports import router as reports_router
 
 app = FastAPI(
     title="Recruitment VMS API",
@@ -18,6 +21,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://recruitment-vms-demo-1.onrender.com",
     ],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
@@ -37,3 +41,6 @@ def health_check():
         "status": "ok",
         "application": "Recruitment VMS",
     }
+app.include_router(candidates_router)
+app.include_router(recruiters_router)
+app.include_router(reports_router)
