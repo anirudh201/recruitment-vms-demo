@@ -61,3 +61,6 @@ backend/app/models.py.client-backup
 
 # OpenAPI inspection output
 openapi-check.json
+
+# Uploaded JD documents (user data, not source code)
+backend/uploads/

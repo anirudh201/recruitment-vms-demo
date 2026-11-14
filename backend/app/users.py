@@ -1,12 +1,14 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_dependencies import get_db
 from app.dependencies import require_permission
-from app.models import Organization, Role, User, Vendor
+from app.models import Client, Organization, Role, User, Vendor
 from app.security import hash_password
 
 router = APIRouter(prefix="/users", tags=["User Management"])
@@ -21,6 +23,10 @@ class UserCreate(BaseModel):
     organization_id: int
     role_ids: list[int]
     vendor_id: int | None = None
+    client_id: int | None = None
+    full_name: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=30)
+    job_title: str | None = Field(default=None, max_length=120)
 
     @field_validator("password")
     @classmethod
@@ -37,6 +43,41 @@ class UserResponse(BaseModel):
     email: EmailStr
     organization_id: int
     is_active: bool
+    full_name: str | None = None
+    phone: str | None = None
+    job_title: str | None = None
+    created_at: datetime | None = None
+    last_login_at: datetime | None = None
+    roles: list[str] = []
+    vendor_id: int | None = None
+    vendor_name: str | None = None
+    client_id: int | None = None
+    client_name: str | None = None
+
+
+def _user_response(user: User) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        organization_id=user.organization_id,
+        is_active=user.is_active,
+        full_name=user.full_name,
+        phone=user.phone,
+        job_title=user.job_title,
+        created_at=user.created_at,
+        last_login_at=user.last_login_at,
+        roles=sorted(role.name for role in user.roles),
+        vendor_id=user.vendor_id,
+        vendor_name=user.vendor.name if user.vendor is not None else None,
+        client_id=user.client_id,
+        client_name=user.client.company_name if user.client is not None else None,
+    )
+
+
+class RoleResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
 
 
 class UserStatusUpdate(BaseModel):
@@ -146,12 +187,44 @@ def create_user(
             detail="vendor_id is required for a Vendor user",
         )
 
+    has_client_role = any(role.name == "Client" for role in roles)
+    if payload.client_id is not None:
+        client = db.get(Client, payload.client_id)
+        if client is None or not client.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active client not found")
+        if client.organization_id != payload.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client must belong to the user's organization",
+            )
+        if not has_client_role:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A client account must have the Client role",
+            )
+    elif has_client_role:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="client_id is required for a Client user")
+    if payload.vendor_id is not None and payload.client_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A user can belong to a vendor or a client, not both",
+        )
+    if has_client_role and any(role.name != "Client" for role in roles):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The Client role cannot be combined with other roles",
+        )
+
 
     user = User(
         email=email,
         password_hash=hash_password(payload.password),
         organization_id=payload.organization_id,
         vendor_id=payload.vendor_id,
+        client_id=payload.client_id,
+        full_name=(payload.full_name or "").strip() or None,
+        phone=(payload.phone or "").strip() or None,
+        job_title=(payload.job_title or "").strip() or None,
         is_active=True,
         roles=list(roles),
     )
@@ -160,12 +233,7 @@ def create_user(
     db.commit()
     db.refresh(user)
 
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        organization_id=user.organization_id,
-        is_active=user.is_active,
-    )
+    return _user_response(user)
 
 
 
@@ -186,15 +254,22 @@ def list_users(
     users = db.scalars(query).all()
 
     return [
-        UserResponse(
-            id=user.id,
-            email=user.email,
-            organization_id=user.organization_id,
-            is_active=user.is_active,
-        )
+        _user_response(user)
         for user in users
     ]
 
+
+
+@router.get("/roles", response_model=list[RoleResponse])
+def list_roles(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_permission("users.manage")),
+):
+    """Roles that can be given to a new user (needed to build the create-user form)."""
+    return [
+        RoleResponse(id=role.id, name=role.name, description=role.description)
+        for role in db.scalars(select(Role).order_by(Role.id)).all()
+    ]
 
 
 @router.patch(
@@ -240,9 +315,35 @@ def update_user_status(
     db.commit()
     db.refresh(user)
 
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        organization_id=user.organization_id,
-        is_active=user.is_active,
-    )
+    return _user_response(user)
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None
+    job_title: str | None = None
+
+
+@router.patch("/{user_id}/profile", response_model=UserResponse)
+def update_user_profile(
+    user_id: int,
+    payload: UserProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users.manage")),
+):
+    """Edit a user's name, phone and designation (only the fields sent are changed)."""
+    from app.partner_access import clean_profile_text
+
+    user = db.get(User, user_id)
+    if user is None or user.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    limits = {"full_name": ("Full name", 200), "phone": ("Phone", 30), "job_title": ("Designation", 120)}
+    try:
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            label, limit = limits[field]
+            setattr(user, field, clean_profile_text(value, label, limit))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(user)
+    return _user_response(user)

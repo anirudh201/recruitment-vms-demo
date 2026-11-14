@@ -52,6 +52,15 @@ def get_current_user(
             detail="User not found or inactive",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    from app.partner_access import company_access_blocked
+
+    blocked = company_access_blocked(user)
+    if blocked:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=blocked,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return user
 
@@ -74,6 +83,27 @@ def require_permission(permission_code: str):
                 detail="You do not have permission to perform this action",
             )
 
+        return current_user
+
+    return permission_checker
+
+
+def require_any_permission(*permission_codes: str):
+    """Require at least one of the given permissions (e.g. manage OR view)."""
+
+    def permission_checker(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+        user_permissions = {
+            permission.code
+            for role in current_user.roles
+            for permission in role.permissions
+        }
+        if not user_permissions.intersection(permission_codes):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action",
+            )
         return current_user
 
     return permission_checker

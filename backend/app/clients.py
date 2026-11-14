@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db_dependencies import get_db
-from app.dependencies import require_permission
+from app.dependencies import require_any_permission, require_permission
 from app.models import Client, ClientContact, User
 
 
@@ -46,6 +46,8 @@ class ClientCreate(BaseModel):
     company_name: str = Field(min_length=1, max_length=200)
     address: str | None = None
     notes: str | None = None
+    # % of the hire's annual CTC; empty = the default (8.33%)
+    fee_percent: float | None = Field(default=None, gt=0, le=100)
     contacts: list[ClientContactCreate] = Field(default_factory=list)
 
 
@@ -53,6 +55,7 @@ class ClientUpdate(BaseModel):
     company_name: str | None = Field(default=None, min_length=1, max_length=200)
     address: str | None = None
     notes: str | None = None
+    fee_percent: float | None = Field(default=None, gt=0, le=100)
     is_active: bool | None = None
 
 class ClientContactResponse(BaseModel):
@@ -75,6 +78,7 @@ class ClientResponse(BaseModel):
     company_name: str
     address: str | None
     notes: str | None
+    fee_percent: float | None = None
     is_active: bool
     created_at: datetime
     contacts: list[ClientContactResponse] = Field(default_factory=list)
@@ -138,6 +142,7 @@ def create_client(
         company_name=company_name,
         address=payload.address,
         notes=payload.notes,
+        fee_percent=payload.fee_percent,
         is_active=True,
     )
 
@@ -171,7 +176,7 @@ def create_client(
 @router.get("", response_model=list[ClientResponse])
 def list_clients(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("clients.manage")),
+    current_user: User = Depends(require_any_permission("clients.manage", "clients.view")),
 ):
     return db.scalars(
         select(Client)
@@ -184,7 +189,7 @@ def list_clients(
 def get_client(
     client_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("clients.manage")),
+    current_user: User = Depends(require_any_permission("clients.manage", "clients.view")),
 ):
     return get_client_for_organization(
         db, client_id, current_user.organization_id

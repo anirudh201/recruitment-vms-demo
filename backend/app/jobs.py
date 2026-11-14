@@ -1,7 +1,11 @@
-
+import os
+import re
+import uuid
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -10,9 +14,267 @@ from sqlalchemy.orm import Session
 from app.db_dependencies import get_db
 from app.dependencies import get_current_user, require_permission
 from app.models import Client, Job, JobVendorAssignment, User, Vendor
+from app.partner_access import hide_clients_from, is_client_user, is_partner_user, permission_codes
+from app import file_storage
 
 
 router = APIRouter(prefix="/jobs", tags=["Job Management"])
+
+# Original JD documents are stored outside the database. Set JD_UPLOAD_DIR in
+# backend/.env to move them (for example to a mounted volume in production).
+JD_UPLOAD_DIR = Path(
+    os.getenv("JD_UPLOAD_DIR")
+    or Path(__file__).resolve().parent.parent / "uploads" / "jd"
+)
+MAX_JD_BYTES = 10 * 1024 * 1024
+JD_FILE_TYPES = {
+    ".pdf": ("application/pdf", b"%PDF-"),
+    ".docx": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        b"PK\x03\x04",
+    ),
+    ".doc": ("application/msword", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+    ".txt": ("text/plain; charset=utf-8", None),
+    ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".webp": ("image/webp", b"RIFF"),
+}
+JD_IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp"}
+JD_TYPES_TEXT = "PDF, Word (DOCX/DOC), text or an image (PNG, JPG, WEBP)"
+
+
+def _decode_text(content: bytes) -> str | None:
+    if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        try:
+            return content.decode("utf-16")
+        except UnicodeDecodeError:
+            return None
+    if b"\x00" in content[:4096]:
+        return None                       # binary data, not a text file
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return None
+
+
+def _check_jd_upload(filename: str, content: bytes) -> tuple[str, str]:
+    """(extension, content type) of an acceptable JD file, or an HTTP error."""
+    extension = Path(filename).suffix.lower()
+    if extension not in JD_FILE_TYPES:
+        raise HTTPException(status_code=415, detail=f"Upload the JD as a {JD_TYPES_TEXT}.")
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if len(content) > MAX_JD_BYTES:
+        raise HTTPException(status_code=413, detail="The file must be 10 MB or smaller.")
+    content_type, signature = JD_FILE_TYPES[extension]
+    genuine = (
+        _decode_text(content) is not None if extension == ".txt"
+        else content.startswith(signature) and (extension != ".webp" or content[8:12] == b"WEBP")
+    )
+    if not genuine:
+        raise HTTPException(status_code=422, detail="The file content does not match its extension. Please upload the original file.")
+    return extension, content_type
+
+
+def _extract_pdf_page_text(page) -> str:
+    """Layout mode keeps words on their visual line; fall back to the default mode."""
+    for kwargs in ({"extraction_mode": "layout"}, {}):
+        try:
+            text = page.extract_text(**kwargs) or ""
+        except Exception:
+            continue
+        if text.strip():
+            return text
+    return ""
+
+
+def _reflow_fragmented_lines(lines: list[str]) -> list[str]:
+    """Some designed PDFs extract as one word per line. Rebuild sentences in that case only."""
+    if len(lines) < 20:
+        return lines
+    short = sum(1 for line in lines if len(line.split()) <= 2)
+    if short / len(lines) < 0.6:
+        return lines
+
+    merged: list[str] = []
+    buffer: list[str] = []
+    for line in lines:
+        buffer.append(line)
+        if re.search(r"[.!?]$", line) and len(buffer) >= 4:
+            merged.append(" ".join(buffer))
+            buffer = []
+    if buffer:
+        merged.append(" ".join(buffer))
+    return merged
+
+
+def _jd_file_path(stored_name: str | None) -> Path | None:
+    """Resolve a stored JD file name, refusing anything outside JD_UPLOAD_DIR."""
+    if not stored_name:
+        return None
+    base = JD_UPLOAD_DIR.resolve()
+    candidate = (base / stored_name).resolve()
+    return candidate if base in candidate.parents else None
+
+
+def _delete_jd_file(stored_name: str | None) -> None:
+    path = _jd_file_path(stored_name)
+    if path is not None:
+        path.unlink(missing_ok=True)
+
+
+@router.post("/parse-jd")
+async def parse_job_description(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permission("jobs.manage")),
+):
+    """Read a JD (PDF, Word, text or image) and fill in only the fields it states explicitly.
+
+    A valid file whose text can't be read (old .doc, an image without OCR, a blank scan) is
+    not an error: the reply has empty fields and a "notice", and the file can still be saved.
+    """
+    from app import jd_ocr
+
+    content = await file.read()
+    extension, _content_type = _check_jd_upload(file.filename or "", content)
+    notice = None
+    text = ""
+    try:
+        from io import BytesIO
+        if extension == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(BytesIO(content))
+            text = "\n".join(_extract_pdf_page_text(page) for page in reader.pages)
+            if len(re.sub(r"\s", "", text)) < 40:          # a scan or flyer: no text layer
+                if jd_ocr.ocr_available():
+                    text = jd_ocr.pdf_to_text(content)
+                    notice = "This PDF is a scanned image, so its text was read automatically. Please check names, numbers and spelling."
+                else:
+                    notice = "This PDF is a scanned image. Text can’t be read from scans on this server (OCR isn’t installed), so please fill in the details. The file will still be saved with the job."
+        elif extension == ".docx":
+            from docx import Document
+            document = Document(BytesIO(content))
+            paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
+            for table in document.tables:
+                for row in table.rows:
+                    paragraphs.append(" | ".join(cell.text.strip() for cell in row.cells if cell.text.strip()))
+            text = "\n".join(paragraphs)
+        elif extension == ".txt":
+            text = _decode_text(content) or ""
+        elif extension in JD_IMAGE_TYPES:
+            if jd_ocr.ocr_available():
+                text = jd_ocr.image_to_text(content)
+                notice = "Text was read from the image automatically. Please check names, numbers and spelling."
+            else:
+                notice = "Text can’t be read from images on this server (OCR isn’t installed), so please fill in the details. The image will still be saved with the job."
+        elif extension == ".doc":
+            notice = "Old Word (.doc) files can’t be read automatically. Please fill in the details, or save the file as DOCX or PDF for auto-fill. The file will still be saved with the job."
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Unable to read this file. Please upload a {JD_TYPES_TEXT}.") from exc
+
+    empty = {
+        "title": None, "description": "", "mandatory_skills": None, "preferred_skills": None, "min_experience": None,
+        "max_experience": None, "qualification": None, "location": None, "work_arrangement": None,
+        "budget_min": None, "budget_max": None, "openings": None,
+    }
+
+    text = text.replace("\r", "\n")
+    # PDFs often emit bullets as control / private-use characters (e.g. \x7f, U+F0B7).
+    text = re.sub(r"[\x0b\x0c]", "\n", text)
+    text = re.sub(r"[\x00-\x08\x0e-\x1f\x7f\uf000-\uf8ff]", "", text)
+    lines = [re.sub(r"\s+", " ", line).strip(" \t•*-:") for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    lines = _reflow_fragmented_lines(lines)
+    normalized = "\n".join(lines)
+    if not normalized.strip():
+        return {**empty, "notice": notice or "No readable text was found in this file, so please fill in the details. The file will still be saved with the job."}
+
+    def label_value(labels: str) -> str | None:
+        pattern = re.compile(rf"(?im)^\s*(?:{labels})\s*[:\-]\s*(.+?)\s*$")
+        match = pattern.search(normalized)
+        return match.group(1).strip() if match else None
+
+    def section_value(labels: str, stop_labels: str) -> str | None:
+        pattern = re.compile(rf"(?ims)^\s*(?:{labels})\s*[:\-]?\s*\n?(.*?)(?=^\s*(?:[a-z&]+[ \t]+){{0,2}}(?:{stop_labels})\s*[:\-]?\s*$|\Z)")
+        match = pattern.search(normalized)
+        value = match.group(1).strip() if match else ""
+        return value[:4000] or None
+
+    title = label_value(r"job\s*title|position(?:\s*title)?|role")
+    if not title:
+        for line in lines[:12]:
+            if re.search(r"\b(job description|job title|requirement|experience|qualification|responsibilities)\b", line, re.I):
+                continue
+            if 3 <= len(line) <= 120:
+                title = line
+                break
+
+    exp = re.search(r"(?i)(\d{1,2})\s*(?:-|to|–|—)\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)(?:\s+of\s+experience)?", normalized)
+    if not exp:
+        exp = re.search(r"(?i)(\d{1,2})\s*\+\s*(?:years?|yrs?)(?:\s+of\s+experience)?", normalized)
+    min_exp = max_exp = None
+    if exp:
+        min_exp = int(exp.group(1))
+        max_exp = int(exp.group(2)) if exp.lastindex and exp.lastindex >= 2 else None
+
+    location = label_value(r"work\s*location|job\s*location|location|based\s*at")
+    qualification = label_value(r"qualification|education|educational\s*qualification|degree")
+    if not qualification:
+        section = section_value(r"qualifications?|education(?:al)?\s*qualifications?", r"skills|responsibilities|experience|summary|benefits|location|about")
+        if section:
+            # the first item, which may wrap over a few lines until its full stop
+            first = []
+            for line in section.strip().splitlines()[:3]:
+                first.append(line.strip())
+                if line.rstrip().endswith((".", ";")):
+                    break
+            qualification = " ".join(first).strip(" .,;")[:250] or None
+    arrangement_raw = label_value(r"work\s*arrangement|work\s*mode|work\s*type") or ""
+    if not arrangement_raw:
+        arrangement_match = re.search(r"(?i)\b(on[- ]site|hybrid|remote)\b", normalized)
+        arrangement_raw = arrangement_match.group(1) if arrangement_match else ""
+    arrangement = None
+    if arrangement_raw:
+        low = arrangement_raw.lower()
+        arrangement = "On-site" if "site" in low else ("Hybrid" if "hybrid" in low else ("Remote" if "remote" in low else None))
+
+    # CTC / salary: "₹35 LPA", "18 - 24 LPA", "12 lakhs" -> yearly rupees
+    budget_min = budget_max = None
+    ctc_raw = label_value(r"ctc|offered\s*ctc|salary|package|budget|compensation") or ""
+    lakhs = re.search(r"(?i)(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?|lacs?|l\b)", ctc_raw) or \
+        re.search(r"(?i)(\d+(?:\.\d+)?)\s*(?:lpa|lakhs?|lacs?|l\b)", ctc_raw)
+    if lakhs:
+        values = [round(float(v) * 100000) for v in lakhs.groups() if v]
+        if len(values) == 2:
+            budget_min, budget_max = min(values), max(values)
+        elif values:
+            budget_max = values[0]                                  # "up to"
+
+    openings_raw = label_value(r"no\.?\s*of\s*(?:openings|positions)|number\s*of\s*(?:openings|positions)|openings|positions|vacancies")
+    openings_match = re.search(r"\d+", openings_raw or "")
+    openings = int(openings_match.group()) if openings_match else None
+
+    mandatory = section_value(r"mandatory\s*skills|required\s*skills|must[- ]have\s*skills|technical\s*skills", r"preferred\s*skills|nice[- ]to[- ]have|good[- ]to[- ]have(?:\s*skills)?|summary|responsibilities|roles?\s*&?\s*responsibilities|job\s*description|qualifications?|education|location|experience|benefits|about\s*the\s*role")
+    preferred = section_value(r"preferred\s*skills|nice[- ]to[- ]have(?:\s*skills)?|good[- ]to[- ]have(?:\s*skills)?", r"industry\s*experience|summary|qualifications?|responsibilities|roles?\s*&?\s*responsibilities|job\s*description|qualification|education|location|experience|benefits|about\s*the\s*role|mandatory\s*skills|required\s*skills")
+
+    return {
+        "title": title,
+        "description": normalized[:12000],
+        "mandatory_skills": mandatory,
+        "preferred_skills": preferred,
+        "min_experience": min_exp,
+        "max_experience": max_exp,
+        "qualification": qualification,
+        "location": location,
+        "work_arrangement": arrangement,
+        "budget_min": budget_min,
+        "budget_max": budget_max,
+        "openings": openings,
+        "notice": notice,
+    }
 
 
 class JobCreate(BaseModel):
@@ -29,6 +291,8 @@ class JobCreate(BaseModel):
     budget_min: int | None = Field(default=None, ge=0)
     budget_max: int | None = Field(default=None, ge=0)
     openings: int = Field(default=1, gt=0)
+    status: str = Field(default="draft", pattern="^(draft|open|closed)$")
+    recruiter_id: int | None = Field(default=None, gt=0)
 
     def validate_ranges(self):
         if (
@@ -59,6 +323,8 @@ class JobUpdate(BaseModel):
     budget_max: int | None = Field(default=None, ge=0)
     openings: int | None = Field(default=None, gt=0)
     status: str | None = Field(default=None, pattern="^(draft|open|closed)$")
+    is_active: bool | None = None
+    recruiter_id: int | None = Field(default=None, gt=0)
 
 
 class JobResponse(BaseModel):
@@ -83,6 +349,11 @@ class JobResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    jd_file_name: str | None = None
+    client_name: str | None = None
+    is_active: bool = True
+    recruiter_id: int | None = None
+    recruiter_name: str | None = None
 
 
 def is_super_admin(user: User) -> bool:
@@ -95,6 +366,13 @@ def can_view_job(db: Session, user: User, job: Job) -> bool:
 
     if user.organization_id != job.organization_id:
         return False
+
+    if not job.is_active and "jobs.manage" not in permission_codes(user):
+        return False
+
+    if is_client_user(user):
+        # A client company only sees its own requirements, and not drafts still being prepared.
+        return user.client_id is not None and job.client_id == user.client_id and job.status != "draft"
 
     if any(role.name == "Vendor" for role in user.roles):
         if user.vendor_id is None:
@@ -150,15 +428,23 @@ def create_job(
                 status_code=422,
                 detail="Client not found in your organization",
             )
+        if not client.is_active:
+            raise HTTPException(status_code=422, detail="This client is deactivated. Activate it first.")
+    _check_recruiter(db, current_user, payload.recruiter_id)
+    job_data = payload.model_dump()
+    if not is_super_admin(current_user):
+        # Non-Super Admin users may create a job only as a draft.
+        job_data["status"] = "draft"
+
     job = Job(
         organization_id=current_user.organization_id,
         created_by_user_id=current_user.id,
-        **payload.model_dump(),
+        **job_data,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
-    return job
+    return _job_for(current_user, job)
 
 
 @router.get("", response_model=list[JobResponse])
@@ -167,7 +453,84 @@ def list_jobs(
     current_user: User = Depends(require_permission("jobs.view")),
 ):
     jobs = db.scalars(select(Job).order_by(Job.id.desc())).all()
-    return [job for job in jobs if can_view_job(db, current_user, job)]
+    return [_job_for(current_user, job) for job in jobs if can_view_job(db, current_user, job)]
+
+
+def _job_for(user: User, job: Job) -> JobResponse:
+    """Job as this user may see it: partners do not get the client link unless allowed."""
+    response = JobResponse.model_validate(job)
+    recruiter = job.recruiter
+    staff_view = not is_partner_user(user) and not is_client_user(user)
+    recruiter_fields = {
+        "recruiter_id": job.recruiter_id if staff_view else None,
+        "recruiter_name": (recruiter.full_name or recruiter.email) if staff_view and recruiter is not None else None,
+    }
+    if hide_clients_from(user):
+        return response.model_copy(update={"client_id": None, "client_name": None, **recruiter_fields})
+    return response.model_copy(update={"client_name": job.client.company_name if job.client is not None else None, **recruiter_fields})
+
+
+def _check_recruiter(db: Session, current_user: User, recruiter_id: int | None) -> None:
+    """Only an active Recruiter of the same organization can own a job."""
+    if recruiter_id is None:
+        return
+    recruiter = db.get(User, recruiter_id)
+    if (
+        recruiter is None
+        or recruiter.organization_id != current_user.organization_id
+        or not recruiter.is_active
+        or not any(role.name == "Recruiter" for role in recruiter.roles)
+    ):
+        raise HTTPException(status_code=422, detail="Choose an active recruiter from your organization.")
+
+
+class JobAssignmentResponse(BaseModel):
+    job_id: int
+    vendor_id: int
+    vendor_name: str
+    assigned_at: datetime
+
+
+@router.get("/assignments", response_model=list[JobAssignmentResponse])
+def list_job_assignments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("jobs.manage")),
+):
+    """Every active partner assignment in the organization (job <-> vendor)."""
+    rows = db.execute(
+        select(JobVendorAssignment, Vendor.name)
+        .join(Job, Job.id == JobVendorAssignment.job_id)
+        .join(Vendor, Vendor.id == JobVendorAssignment.vendor_id)
+        .where(
+            Job.organization_id == current_user.organization_id,
+            JobVendorAssignment.is_active.is_(True),
+        )
+        .order_by(JobVendorAssignment.assigned_at.desc())
+    ).all()
+    return [
+        JobAssignmentResponse(
+            job_id=assignment.job_id,
+            vendor_id=assignment.vendor_id,
+            vendor_name=vendor_name,
+            assigned_at=assignment.assigned_at,
+        )
+        for assignment, vendor_name in rows
+    ]
+
+
+@router.get("/permissions")
+def get_job_permissions(
+    current_user: User = Depends(require_permission("jobs.view")),
+):
+    can_manage_jobs = any(
+        permission.code == "jobs.manage"
+        for role in current_user.roles
+        for permission in role.permissions
+    )
+    return {
+        "can_change_status": is_super_admin(current_user),
+        "can_manage_jobs": can_manage_jobs,
+    }
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -181,7 +544,7 @@ def get_job(
     if job is None or not can_view_job(db, current_user, job):
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return job
+    return _job_for(current_user, job)
 
 
 @router.patch("/{job_id}", response_model=JobResponse)
@@ -201,6 +564,12 @@ def update_job(
 
     changes = payload.model_dump(exclude_unset=True)
 
+    if "status" in changes and not is_super_admin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can change job status",
+        )
+
     if "client_id" in changes and changes["client_id"] is not None:
         client = db.get(Client, changes["client_id"])
 
@@ -212,6 +581,11 @@ def update_job(
                 status_code=422,
                 detail="Client not found in your organization",
             )
+        if not client.is_active and changes["client_id"] != job.client_id:
+            raise HTTPException(status_code=422, detail="This client is deactivated. Activate it first.")
+
+    if changes.get("recruiter_id") is not None and changes["recruiter_id"] != job.recruiter_id:
+        _check_recruiter(db, current_user, changes["recruiter_id"])
 
     min_experience = changes.get("min_experience", job.min_experience)
     max_experience = changes.get("max_experience", job.max_experience)
@@ -229,7 +603,66 @@ def update_job(
 
     db.commit()
     db.refresh(job)
-    return job
+    return _job_for(current_user, job)
+
+
+@router.post("/{job_id}/jd-file", response_model=JobResponse)
+async def upload_job_jd_file(
+    job_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("jobs.manage")),
+):
+    """Attach (or replace) the original JD file (PDF, Word, text or image) on a job."""
+    job = db.get(Job, job_id)
+    if job is None or job.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    original_name = Path(file.filename or "").name
+    content = await file.read()
+    extension, content_type = _check_jd_upload(original_name, content)
+
+    stored_name = file_storage.store(db, JD_UPLOAD_DIR, extension, content, content_type)
+
+    previous_file = job.jd_file_path
+    job.jd_file_name = (original_name or f"JD{extension}")[:300]
+    job.jd_file_path = stored_name
+    job.jd_content_type = content_type
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        file_storage.discard_new(JD_UPLOAD_DIR, stored_name)
+        raise
+
+    db.refresh(job)
+    if previous_file:
+        file_storage.discard_old(db, JD_UPLOAD_DIR, previous_file)
+        db.refresh(job)
+    return _job_for(current_user, job)
+
+
+@router.get("/{job_id}/jd-file")
+def download_job_jd_file(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("jobs.view")),
+):
+    """Return the original uploaded JD document for a job the user may view."""
+    job = db.get(Job, job_id)
+    if job is None or not can_view_job(db, current_user, job):
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not job.jd_file_path:
+        raise HTTPException(status_code=404, detail="No JD file has been uploaded for this job.")
+
+    response = file_storage.file_response(
+        db, JD_UPLOAD_DIR, job.jd_file_path, job.jd_content_type or "application/octet-stream", job.jd_file_name or "job-description"
+    )
+    if response is None:
+        raise HTTPException(status_code=404, detail="The stored JD file could not be found on the server.")
+    return response
 
 
 @router.post("/{job_id}/assign-vendor/{vendor_id}", status_code=201)
@@ -244,6 +677,8 @@ def assign_vendor(
 
     if job is None or job.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Job not found")
+    if not job.is_active:
+        raise HTTPException(status_code=409, detail="This job is deactivated. Activate it before assigning partners.")
 
     if (
         vendor is None
@@ -274,3 +709,31 @@ def assign_vendor(
         raise HTTPException(status_code=409, detail="Could not assign vendor")
 
     return {"message": "Vendor assigned successfully", "job_id": job_id, "vendor_id": vendor_id}
+
+
+@router.delete("/{job_id}/assign-vendor/{vendor_id}")
+def unassign_vendor(
+    job_id: int,
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("jobs.manage")),
+):
+    """Stop a partner working on a job. The assignment is deactivated, not deleted,
+    so earlier submissions and their history stay intact."""
+    job = db.get(Job, job_id)
+    if job is None or job.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    assignment = db.scalar(
+        select(JobVendorAssignment).where(
+            JobVendorAssignment.job_id == job_id,
+            JobVendorAssignment.vendor_id == vendor_id,
+            JobVendorAssignment.is_active.is_(True),
+        )
+    )
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="This partner is not assigned to the job")
+
+    assignment.is_active = False
+    db.commit()
+    return {"message": "Vendor unassigned successfully", "job_id": job_id, "vendor_id": vendor_id}

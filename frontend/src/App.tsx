@@ -1,17 +1,58 @@
 
 import { useCallback, useEffect, useState } from 'react'
-import StatCard from './components/StatCard'
+import DashboardOverview from './components/DashboardOverview'
+import CandidatesPage, { type CandidateFilters } from './components/CandidatesPage'
+import { JobPartnersModal, PartnerRequirementsModal } from './components/PartnerAssignments'
+import PartnerRequirementsPage from './components/PartnerRequirementsPage'
+import UsersPage from './components/UsersPage'
+import ProfilePage from './components/ProfilePage'
+import ReportsPage from './components/ReportsPage'
+import FeedbackButton from './components/FeedbackButton'
+import FeedbackPage from './components/FeedbackPage'
+import LoginBrand from './components/LoginBrand'
+import GuidedTour from './components/GuidedTour'
+import { TOUR_STEPS, type TourPage } from './tourSteps'
+import logo from './assets/dmi-logo.webp'
+import sidebarLogo from './assets/dmi-logo-sidebar.webp'
+import { initials } from './profileUtils'
+import { JD_ACCEPT } from './jdFiles'
+import ClientPositionsModal from './components/ClientPositionsModal'
+import { formatCtc } from './positionFormat'
+import { ClientCandidatesPage, ClientJobsPage, ClientOverview, type ClientTab } from './components/ClientPortal'
+import JobJDModal from './components/JobJDModal'
 import {
   createClient,
   createVendor,
   createClientContact,
   getClients,
   getJobs,
+  getSubmissions,
+  getCandidatePermissions,
+  getJobAssignments,
+  getMe,
+  listFeedback,
+  IS_DEMO,
+  setClientActive,
+  setJobActive,
+  updateJobDetails,
+  getRecruiterPerformance,
+  setJobRecruiter,
+  setVendorActive,
+  getJobPermissions,
   getVendors,
   login,
+  requestPasswordReset,
+  resetPassword,
   createJob,
+  updateJob,
+  parseJobDescription,
+  uploadJobJDFile,
   updateClient,
   updateClientContact,
+  type CandidatePermissions,
+  type JobAssignment,
+  type Me,
+  type CandidateSubmission,
   type Client,
   type ClientContact,
   type CreateClientContactInput,
@@ -24,8 +65,59 @@ import './App.css'
 
 const TOKEN_KEY = 'vms_access_token'
 
-type Page = 'dashboard' | 'jobs' | 'clients' | 'vendors'
+// Signed in for this browser tab only (sessionStorage), or on this computer
+// until the token expires when "Remember me" is ticked (localStorage).
+function readStoredToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+function storeToken(token: string, remember: boolean) {
+  try {
+    forgetStoredToken()
+    ;(remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token)
+  } catch {
+    // storage unavailable: the session still works until the page is reloaded
+  }
+}
+function forgetStoredToken() {
+  try {
+    sessionStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // nothing stored
+  }
+}
 
+// Sign-in tabs. The account decides what someone can see; the tab makes sure each kind of
+// user signs in through the right door (and lets you share links like …/#client).
+type LoginRole = 'team' | 'partner' | 'client'
+const LOGIN_ROLE_KEY = 'vms_login_role'
+const LOGIN_TABS: Array<{ role: LoginRole; label: string; intro: string }> = [
+  { role: 'team', label: 'Team', intro: 'Sign in to manage jobs, candidates, partners and clients.' },
+  { role: 'partner', label: 'Partner', intro: 'Channel partners: sign in to see your assigned requirements and submit candidates.' },
+  { role: 'client', label: 'Client', intro: 'Clients: sign in to review the candidates shortlisted for your positions.' },
+]
+const LOGIN_ROLE_OF: Record<string, LoginRole> = { super_admin: 'team', recruiter: 'team', staff: 'team', partner: 'partner', client: 'client' }
+
+function initialLoginRole(): LoginRole {
+  const fromLink = window.location.hash.replace('#', '').toLowerCase()
+  if (fromLink === 'team' || fromLink === 'partner' || fromLink === 'client') return fromLink
+  try {
+    const saved = localStorage.getItem(LOGIN_ROLE_KEY)
+    if (saved === 'team' || saved === 'partner' || saved === 'client') return saved
+  } catch {
+    // storage unavailable: fall back to the Team tab
+  }
+  return 'team'
+}
+
+const NO_CANDIDATE_PERMISSIONS: CandidatePermissions = { can_submit: false, can_update_status: false, is_vendor_user: false, can_see_clients: true }
+
+type Page = 'dashboard' | 'jobs' | 'clients' | 'vendors' | 'candidates' | 'users' | 'profile' | 'reports' | 'feedback'
+ 
 type VendorForm = {
   name: string
   contact_name: string
@@ -44,6 +136,7 @@ type ClientForm = {
   company_name: string
   address: string
   notes: string
+  fee_percent: string
   is_active: boolean
 }
 
@@ -56,6 +149,7 @@ type ContactForm = {
 }
 
 const emptyClientForm: ClientForm = {
+  fee_percent: '',
   company_name: '',
   address: '',
   notes: '',
@@ -70,26 +164,88 @@ const emptyContactForm: ContactForm = {
   is_primary: true,
 }
 
+
+function StatusBadge({ status }: { status: string | null | undefined }) {
+  const normalized = (status || 'unknown').trim().toLowerCase()
+  const statusClass = ['open', 'draft', 'closed', 'active', 'inactive'].includes(normalized)
+    ? normalized
+    : 'unknown'
+  const label = normalized === 'unknown'
+    ? 'Unknown'
+    : normalized.charAt(0).toUpperCase() + normalized.slice(1)
+
+  return (
+    <span className={`job-status job-status-${statusClass}`}>
+      <span className="job-status-dot" aria-hidden="true" />
+      {label}
+    </span>
+  )
+}
+
 function App() {
   const [token, setToken] = useState<string | null>(
-    () => sessionStorage.getItem(TOKEN_KEY),
+    () => readStoredToken(),
   )
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const initialResetToken = new URLSearchParams(window.location.search).get('reset_token') || ''
+  const [authView, setAuthView] = useState<'login' | 'forgot' | 'reset'>(initialResetToken ? 'reset' : 'login')
+  const [resetToken, setResetToken] = useState(initialResetToken)
+  const [resetEmail, setResetEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [authMessage, setAuthMessage] = useState<string | null>(null)
+  const [authBusy, setAuthBusy] = useState(false)
   const [page, setPage] = useState<Page>('dashboard')
   const [jobFilter, setJobFilter] = useState<'all' | 'open'>('all')
+  const [jobSearch, setJobSearch] = useState('')
+  const [showInactiveJobs, setShowInactiveJobs] = useState(false)
+  const [loginRole, setLoginRole] = useState<LoginRole>(initialLoginRole)
+  const [loginNotice, setLoginNotice] = useState<string | null>(null)
+  const [feedbackNew, setFeedbackNew] = useState<number | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
+  const [tourOpen, setTourOpen] = useState(false)
+  const tourNavigate = useCallback((target: TourPage) => setPage(target), [])
+  const closeTour = useCallback(() => setTourOpen(false), [])
+  // Active recruiters (for assigning positions); empty for partner/client logins.
+  const [recruiterOptions, setRecruiterOptions] = useState<Array<{ id: number; name: string }>>([])
+  const [togglingId, setTogglingId] = useState<string | null>(null)
 
   const [jobs, setJobs] = useState<Job[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [vendorSearch, setVendorSearch] = useState('')
-  const [vendorStatusFilter, setVendorStatusFilter] = useState('ALL')
+  const [vendorStatusFilter, setVendorStatusFilter] = useState('ACTIVE')
   const [showVendorForm, setShowVendorForm] = useState(false)
-
+  
   const [showJobForm, setShowJobForm] = useState(false)
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null)
+  const [viewingJobJD, setViewingJobJD] = useState<Job | null>(null)
+  const [viewingClientJDsId, setViewingClientJDsId] = useState<number | null>(null)
+  const [expandedClientContacts, setExpandedClientContacts] = useState<number[]>([])
 
   const [savingJob, setSavingJob] = useState(false)
+  // set while the job form edits an existing job (null = adding a new one)
+  const [editingJobId, setEditingJobId] = useState<number | null>(null)
+  const [parsingJD, setParsingJD] = useState(false)
+  const [canChangeJobStatus, setCanChangeJobStatus] = useState(false)
+  const [canManageJobs, setCanManageJobs] = useState(false)
+  const [submissions, setSubmissions] = useState<CandidateSubmission[]>([])
+  const [candidatePermissions, setCandidatePermissions] = useState<CandidatePermissions>(NO_CANDIDATE_PERMISSIONS)
+  // Filters pre-set by "Candidates (n)" links on other pages; the key re-applies them on each click.
+  const [candidateFilters, setCandidateFilters] = useState<CandidateFilters>({})
+  const [candidatesNavKey, setCandidatesNavKey] = useState(0)
+  // Channel-partner assignments (job <-> vendor); only Super Admin can load them.
+  const [assignments, setAssignments] = useState<JobAssignment[]>([])
+  const [managingPartnersJobId, setManagingPartnersJobId] = useState<number | null>(null)
+  const [viewingPartnerId, setViewingPartnerId] = useState<number | null>(null)
+  // Who is signed in: roles + permissions decide which pages and buttons are shown.
+  const [me, setMe] = useState<Me | null>(null)
+  const [clientTab, setClientTab] = useState<ClientTab>('review')
+  const [clientJobFilter, setClientJobFilter] = useState<number | null>(null)
+  const [clientNavKey, setClientNavKey] = useState(0)
+  // Original JD document chosen in the Add Job form; uploaded after the job is saved.
+  const [jdFile, setJdFile] = useState<File | null>(null)
 
   const [jobForm, setJobForm] = useState<CreateJobInput>({
           title: '',
@@ -105,14 +261,15 @@ function App() {
           budget_min: null,
           budget_max: null,
           openings: 1,
+          status: 'draft',
         })
 
   const [vendorForm, setVendorForm] =
   useState<VendorForm>(emptyVendorForm)
   const [clients, setClients] = useState<Client[]>([])
-
+ 
   const [clientSearch, setClientSearch] = useState('')
-  const [clientStatusFilter, setClientStatusFilter] = useState('ALL')
+  const [clientStatusFilter, setClientStatusFilter] = useState('ACTIVE')
   const [clientContactFilter, setClientContactFilter] = useState('ALL')
 
   const [loading, setLoading] = useState(false)
@@ -133,7 +290,7 @@ function App() {
     clientId: number
     contact: ClientContact
   } | null>(null)
-
+  
   const [addingContactForClient, setAddingContactForClient] =
   useState<number | null>(null)
 
@@ -141,9 +298,15 @@ function App() {
     useState<ContactForm>(emptyContactForm)
 
   const logout = useCallback(() => {
-    sessionStorage.removeItem(TOKEN_KEY)
+    forgetStoredToken()
     setToken(null)
     setJobs([])
+    setCanChangeJobStatus(false)
+    setCanManageJobs(false)
+    setSubmissions([])
+    setCandidatePermissions(NO_CANDIDATE_PERMISSIONS)
+    setAssignments([])
+    setMe(null)
     setVendors([])
     setClients([])
     setPassword('')
@@ -160,15 +323,41 @@ function App() {
       setError(null)
 
       try {
-        const [jobData, vendorData, clientData] = await Promise.all([
+        const [jobData, vendorData, clientData, jobPermissions, submissionData, candidatePerms, assignmentData, meData, recruiterData] = await Promise.all([
           getJobs(accessToken),
-          getVendors(accessToken),
-          getClients(accessToken),
+          // Only Super Admin may list vendors/clients (403 for Recruiter and Vendor roles);
+          // those roles still get names for candidates from the submissions themselves.
+          getVendors(accessToken).catch((): Vendor[] => []),
+          getClients(accessToken).catch((): Client[] => []),
+          getJobPermissions(accessToken),
+          // Roles without candidate access (or an older backend) just see zero submissions.
+          getSubmissions(accessToken).catch((): CandidateSubmission[] => []),
+          getCandidatePermissions(accessToken).catch(() => NO_CANDIDATE_PERMISSIONS),
+          getJobAssignments(accessToken).catch((): JobAssignment[] => []),
+          getMe(accessToken).catch((): Me | null => null),
+          getRecruiterPerformance(accessToken).catch(() => null),
         ])
 
+        setRecruiterOptions(Array.isArray(recruiterData?.recruiters) ? recruiterData.recruiters.map((recruiter) => ({ id: recruiter.id, name: recruiter.name })) : [])
+
+        // An older backend's /auth/me has no roles/permissions; then keep the previous behaviour.
+        setMe(meData && Array.isArray(meData.permissions) && typeof meData.user_type === 'string' ? meData : null)
+        if (meData && Array.isArray(meData.permissions) && meData.permissions.includes('users.manage')) {
+          listFeedback(accessToken, { status: 'new' })
+            .then((items) => setFeedbackNew(Array.isArray(items) ? items.length : null))
+            .catch(() => setFeedbackNew(null))
+        }
+
+        setAssignments(Array.isArray(assignmentData) ? assignmentData : [])
+
+        setCandidatePermissions(candidatePerms)
+
+        setSubmissions(Array.isArray(submissionData) ? submissionData : [])
         setJobs(jobData)
         setVendors(vendorData)
         setClients(clientData)
+        setCanChangeJobStatus(jobPermissions.can_change_status)
+        setCanManageJobs(jobPermissions.can_manage_jobs ?? jobPermissions.can_change_status)
       } catch (err) {
         const message =
           err instanceof Error
@@ -193,20 +382,83 @@ function App() {
     }
   }, [token, loadDashboard])
 
+  function chooseLoginRole(role: LoginRole) {
+    setLoginRole(role)
+    try {
+      localStorage.setItem(LOGIN_ROLE_KEY, role)
+    } catch {
+      // not remembered; fine
+    }
+  }
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoginLoading(true)
     setError(null)
 
+    setLoginNotice(null)
+
     try {
       const result = await login(email.trim(), password)
-      sessionStorage.setItem(TOKEN_KEY, result.access_token)
+      // Make sure the account belongs behind the tab that was used.
+      const who = await getMe(result.access_token).catch(() => null)
+      const accountRole = who && typeof who.user_type === 'string' ? LOGIN_ROLE_OF[who.user_type] : undefined
+      if (accountRole && accountRole !== loginRole) {
+        const label = LOGIN_TABS.find((tab) => tab.role === accountRole)?.label ?? 'other'
+        chooseLoginRole(accountRole)
+        setLoginNotice(`This is a ${label.toLowerCase()} account, so we switched to the ${label} tab. Select Sign in to continue.`)
+        return
+      }
+      storeToken(result.access_token, rememberMe)
       setToken(result.access_token)
       setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.')
     } finally {
       setLoginLoading(false)
+    }
+  }
+
+  async function handleForgotPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthBusy(true)
+    setError(null)
+    setAuthMessage(null)
+    try {
+      const result = await requestPasswordReset(resetEmail.trim())
+      setAuthMessage(result.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to request a password reset.')
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  async function handleResetPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+    setAuthMessage(null)
+    if (newPassword.length < 12) {
+      setError('Use at least 12 characters for your new password.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('The passwords do not match.')
+      return
+    }
+    setAuthBusy(true)
+    try {
+      const result = await resetPassword(resetToken, newPassword)
+      setAuthMessage(result.message)
+      setNewPassword('')
+      setConfirmPassword('')
+      window.history.replaceState({}, document.title, window.location.pathname)
+      setResetToken('')
+      setAuthView('login')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to reset password.')
+    } finally {
+      setAuthBusy(false)
     }
   }
 
@@ -226,6 +478,7 @@ function App() {
       company_name: client.company_name,
       address: client.address ?? '',
       notes: client.notes ?? '',
+      fee_percent: client.fee_percent != null ? String(client.fee_percent) : '',
       is_active: client.is_active,
     })
     setShowClientForm(true)
@@ -281,6 +534,7 @@ function App() {
           company_name: companyName,
           address: clientForm.address.trim() || null,
           notes: clientForm.notes.trim() || null,
+          fee_percent: clientForm.fee_percent.trim() ? Number(clientForm.fee_percent) : null,
           is_active: clientForm.is_active,
         })
 
@@ -290,6 +544,7 @@ function App() {
           company_name: companyName,
           address: clientForm.address.trim() || null,
           notes: clientForm.notes.trim() || null,
+          fee_percent: clientForm.fee_percent.trim() ? Number(clientForm.fee_percent) : null,
         })
 
         if (hasInitialContact) {
@@ -377,7 +632,7 @@ function App() {
     }
   }
 
-
+ 
   function cancelVendorForm() {
     setShowVendorForm(false)
     setVendorForm(emptyVendorForm)
@@ -385,6 +640,8 @@ function App() {
 
   function cancelJobForm() {
   setShowJobForm(false)
+  setEditingJobId(null)
+  setJdFile(null)
   setJobForm({
     title: '',
     client_id: null,
@@ -399,9 +656,96 @@ function App() {
     budget_min: null,
     budget_max: null,
     openings: 1,
+    status: 'draft',
   })
 }
 
+
+async function handleJDFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!token) {
+    setError('Your session has expired. Please sign in again.')
+    return
+  }
+  setParsingJD(true)
+  setError(null)
+  setSuccess(null)
+  try {
+    const parsed = await parseJobDescription(token, file)
+    setJobForm((current) => ({
+      ...current,
+      title: parsed.title?.trim() || current.title,
+      description: parsed.description || current.description,
+      mandatory_skills: parsed.mandatory_skills ?? current.mandatory_skills,
+      preferred_skills: parsed.preferred_skills ?? current.preferred_skills,
+      min_experience: parsed.min_experience ?? current.min_experience,
+      max_experience: parsed.max_experience ?? current.max_experience,
+      qualification: parsed.qualification ?? current.qualification,
+      location: parsed.location ?? current.location,
+      work_arrangement: parsed.work_arrangement ?? current.work_arrangement,
+      budget_min: parsed.budget_min ?? current.budget_min,
+      budget_max: parsed.budget_max ?? current.budget_max,
+      openings: parsed.openings ?? current.openings,
+    }))
+    // keep the file even when its text couldn't be read (e.g. an image or an old .doc)
+    setJdFile(file)
+    setSuccess(parsed.notice ?? 'JD text extracted. Please review the populated fields before saving.')
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Unable to extract text from this JD.')
+  } finally {
+    setParsingJD(false)
+  }
+}
+
+async function handleJobStatusChange(jobId: number, status: 'draft' | 'open' | 'closed') {
+  if (!canChangeJobStatus) {
+    setError('Only Super Admin can change job status.')
+    return
+  }
+  if (!token) {
+    setError('Your session has expired. Please sign in again.')
+    return
+  }
+  setError(null)
+  setSuccess(null)
+  try {
+    await updateJob(token, jobId, { status })
+    setJobs((current) => current.map((job) => job.id === jobId ? { ...job, status } : job))
+    setSuccess('Job status updated successfully.')
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Unable to update job status.')
+  }
+}
+
+function startEditJob(job: Job) {
+  setError(null)
+  setSuccess(null)
+  setJdFile(null)
+  setEditingJobId(job.id)
+  setJobForm({
+    title: job.title,
+    client_id: job.client_id ?? null,
+    description: job.description ?? '',
+    mandatory_skills: job.mandatory_skills ?? null,
+    preferred_skills: job.preferred_skills ?? null,
+    min_experience: job.min_experience ?? 0,
+    max_experience: job.max_experience ?? null,
+    qualification: job.qualification ?? null,
+    location: job.location ?? '',
+    work_arrangement: job.work_arrangement ?? null,
+    budget_min: job.budget_min ?? null,
+    budget_max: job.budget_max ?? null,
+    openings: job.openings ?? 1,
+    status: job.status as CreateJobInput['status'],
+    recruiter_id: job.recruiter_id ?? null,
+  })
+  setViewingJobJD(null)
+  setPage('jobs')
+  setShowJobForm(true)
+  window.setTimeout(() => document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+}
 
 async function handleSaveJob(
   event: React.FormEvent<HTMLFormElement>,
@@ -450,21 +794,37 @@ async function handleSaveJob(
   setSuccess(null)
 
   try {
-    await createJob(token, {
+    const details = {
       ...jobForm,
       title: jobForm.title.trim(),
       description: jobForm.description.trim(),
       location: jobForm.location.trim(),
-    })
+    }
+    const editing = editingJobId !== null
+    const createdJob = editing ? await updateJobDetails(token, editingJobId, details) : await createJob(token, details)
+
+    // Keep the original PDF/DOCX so "View JD" can open it later.
+    let attachError: string | null = null
+    if (jdFile) {
+      try {
+        await uploadJobJDFile(token, createdJob.id, jdFile)
+      } catch (err) {
+        attachError = err instanceof Error ? err.message : 'Unable to upload the JD file.'
+      }
+    }
 
     await loadDashboard(token)
     cancelJobForm()
-    setSuccess('Job requirement created successfully.')
+    if (attachError) {
+      setError(`Job saved, but the original JD file was not attached: ${attachError} You can attach it from View JD.`)
+    } else {
+      setSuccess(editing ? `${createdJob.title} was updated.` : 'Job requirement created successfully.')
+    }
   } catch (err) {
     setError(
       err instanceof Error
         ? err.message
-        : 'Unable to create the job requirement.',
+        : editingJobId !== null ? 'Unable to save the changes.' : 'Unable to create the job requirement.',
     )
   } finally {
     setSavingJob(false)
@@ -578,46 +938,275 @@ async function handleSaveJob(
 
   if (!token) {
     return (
-      <main className="login-page">
-        <form className="login-card" onSubmit={handleLogin}>
-          <h1>Recruitment VMS</h1>
-          <p>Sign in to access your workspace.</p>
+      <main className="login-page lp-page">
+        <LoginBrand />
 
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
+        <section className="lp-side">
+          <div className="lp-card">
+            {IS_DEMO && (
+              <p className="demo-banner lp-demo" role="note">
+                <strong>DEMO</strong> Test environment with sample data. Use the login details your team lead shared.
+              </p>
+            )}
+            <img className="lp-logo" src={logo} alt="DM&I Technologies" width={178} height={192} />
+            <h1>{authView === 'login' ? 'Welcome Back' : authView === 'forgot' ? 'Forgot your password?' : 'Set a new password'}</h1>
+            <p className="lp-subtitle">
+              {authView === 'login'
+                ? 'Please enter your details to sign in'
+                : authView === 'forgot'
+                  ? 'Enter your email address and we’ll send you a reset link.'
+                  : 'Choose a new password for your account (at least 12 characters).'}
             </p>
+
+            {authView === 'login' && (
+            <div className="login-tabs" role="tablist" aria-label="Sign in as">
+              {LOGIN_TABS.map((tab) => (
+                <button
+                  key={tab.role}
+                  type="button"
+                  role="tab"
+                  id={`login-tab-${tab.role}`}
+                  aria-selected={loginRole === tab.role}
+                  aria-controls="login-panel"
+                  className={loginRole === tab.role ? 'active' : ''}
+                  onClick={() => {
+                    chooseLoginRole(tab.role)
+                    setLoginNotice(null)
+                    setError(null)
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           )}
 
-          <label htmlFor="email">Email address</label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
+            {authView === 'login' && (
+              <p className="lp-intro">{LOGIN_TABS.find((tab) => tab.role === loginRole)?.intro}</p>
+            )}
+            {authView === 'login' && loginNotice && (
+              <p className="login-notice" role="status">{loginNotice}</p>
+            )}
+            {error && (
+              <p className="error-message" role="alert">{error}</p>
+            )}
+            {authMessage && (
+              <p className="success-message" role="status">{authMessage}</p>
+            )}
 
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
+            {authView === 'login' && (
+              <form onSubmit={handleLogin} className="auth-form" id="login-panel" role="tabpanel" aria-labelledby={`login-tab-${loginRole}`}>
+                <label htmlFor="email">Email address</label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="username"
+                  placeholder="Email address"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+                <label htmlFor="password">Password</label>
+                <div className="lp-password">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="Password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="lp-eye"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((value) => !value)}
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                      {!showPassword && <path d="M3 3l18 18" />}
+                    </svg>
+                  </button>
+                </div>
+                <div className="lp-row">
+                  <button
+                    type="button"
+                    className="lp-link"
+                    onClick={() => {
+                      setAuthView('forgot')
+                      setError(null)
+                      setAuthMessage(null)
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <button type="submit" className="lp-primary" disabled={loginLoading}>
+                  {loginLoading ? 'Signing in…' : 'Sign in'}
+                </button>
+                <label className="lp-remember">
+                  <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
+                  Remember me
+                </label>
+                <p className="lp-account">Don’t have an account? <span>Ask your administrator to create one for you.</span></p>
+              </form>
+            )}
+              {authView === 'forgot' && (
+              <form onSubmit={handleForgotPassword} className="auth-form">
+                <label htmlFor="reset-email">Email address</label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={resetEmail}
+                  onChange={(event) => setResetEmail(event.target.value)}
+                />
+                <button type="submit" className="lp-primary" disabled={authBusy}>
+                  {authBusy ? 'Sending…' : 'Send reset link'}
+                </button>
+                <button type="button" className="lp-link lp-back" onClick={() => { setAuthView('login'); setError(null); setAuthMessage(null) }}>
+                  ← Back to sign in
+                </button>
+              </form>
+          )}
 
-          <button type="submit" disabled={loginLoading}>
-            {loginLoading ? 'Signing in...' : 'Sign in'}
-          </button>
-        </form>
+          {authView === 'reset' && (
+            <form onSubmit={handleResetPassword} className="auth-form">
+              <label htmlFor="new-password">New password</label>
+              <input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                required
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+              <label htmlFor="confirm-password">Confirm new password</label>
+              <input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                required
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+              <button type="submit" className="lp-primary" disabled={authBusy}>
+                {authBusy ? 'Resetting…' : 'Reset password'}
+              </button>
+              <button type="button" className="lp-link lp-back" onClick={() => { setAuthView('login'); setError(null); setAuthMessage(null) }}>
+                ← Back to sign in
+              </button>
+            </form>
+          )}
+          </div>
+        </section>
       </main>
     )
   }
 
-  const activeJobs = jobs.filter((job) => job.status === 'open').length
+  const openCandidates = (filters: CandidateFilters = {}) => {
+    setCandidateFilters(filters)
+    setCandidatesNavKey((key) => key + 1)
+    setError(null)
+    setSuccess(null)
+    setPage('candidates')
+  }
+
+  const refreshSubmissions = async () => {
+    if (!token) return
+    try {
+      const data = await getSubmissions(token)
+      setSubmissions(Array.isArray(data) ? data : [])
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('session has expired')) logout()
+      throw err
+    }
+  }
+
+  const candidateCount = (match: (item: CandidateSubmission) => boolean) => submissions.filter(match).length
+
+  // Deactivated jobs are only listed on the Jobs page (when "Show deactivated" is on).
+  const visibleJobs = jobs.filter((job) => job.is_active !== false)
+  const jobListed = (job: Job) => showInactiveJobs || job.is_active !== false
+
+  async function assignRecruiter(job: Job, recruiterId: number | null) {
+    if (!token) return
+    setTogglingId(`rec-${job.id}`)
+    setError(null)
+    setSuccess(null)
+    try {
+      const updated = await setJobRecruiter(token, job.id, recruiterId)
+      setJobs((current) => current.map((item) => (item.id === job.id ? { ...item, ...updated } : item)))
+      setSuccess(recruiterId === null ? `${job.title} no longer has a recruiter.` : `${job.title} is now owned by ${updated.recruiter_name ?? 'the selected recruiter'}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The recruiter could not be assigned.')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  // Deactivate / activate. Nothing is deleted; the record keeps its history.
+  async function toggleActive(kind: 'job' | 'client' | 'vendor', id: number, name: string, makeActive: boolean) {
+    if (!token) return
+    setTogglingId(`${kind}-${id}`)
+    setError(null)
+    setSuccess(null)
+    try {
+      if (kind === 'job') {
+        const updated = await setJobActive(token, id, makeActive)
+        setJobs((current) => current.map((job) => (job.id === id ? { ...job, ...updated } : job)))
+      } else if (kind === 'client') {
+        const updated = await setClientActive(token, id, makeActive)
+        setClients((current) => current.map((client) => (client.id === id ? { ...client, ...updated } : client)))
+      } else {
+        const updated = await setVendorActive(token, id, makeActive)
+        setVendors((current) => current.map((vendor) => (vendor.id === id ? { ...vendor, ...updated } : vendor)))
+      }
+      setSuccess(`${name} ${makeActive ? 'activated' : 'deactivated'}.${makeActive ? '' : ' You can activate it again at any time.'}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The change could not be saved.')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const refreshAssignments = async () => {
+    if (!token) return
+    const data = await getJobAssignments(token)
+    setAssignments(Array.isArray(data) ? data : [])
+  }
+
+  // Role-based access. Without /auth/me (older backend) fall back to the previous behaviour.
+  const can = (code: string) => (me ? me.permissions.includes(code) : true)
+  const isClient = me?.user_type === 'client' || candidatePermissions.is_client_user === true
+  const canManageClients = can('clients.manage')
+  const canViewClients = canManageClients || can('clients.view')
+  const canManageVendors = can('vendors.manage')
+  const canViewVendors = canManageVendors || can('vendors.view')
+  const canManageUsers = me ? me.permissions.includes('users.manage') : false
+  const roleLabel = !me ? '' : me.user_type === 'super_admin' ? 'Super Admin' : me.user_type === 'recruiter' ? 'Recruiter'
+    : me.user_type === 'partner' ? `Channel partner${me.vendor_name ? ` · ${me.vendor_name}` : ''}`
+      : me.user_type === 'client' ? `Client${me.client_name ? ` · ${me.client_name}` : ''}` : me.roles.join(', ')
+  const openClientCandidates = (tab: ClientTab, jobId: number | null = null) => {
+    setClientTab(tab)
+    setClientJobFilter(jobId)
+    setClientNavKey((key) => key + 1)
+    setPage('candidates')
+  }
+
+  // Channel-partner (vendor) logins get their own views, and may not be allowed to see clients.
+  const partnerView = candidatePermissions.is_vendor_user
+  const hideClientsInUI = partnerView && candidatePermissions.can_see_clients === false
+  const clientNameFor = (job: Job) =>
+    job.client_name ?? (job.client_id == null ? 'No client linked' : clients.find((client) => client.id === job.client_id)?.company_name ?? `Client #${job.client_id}`)
+  const partnersOf = (jobId: number) => assignments.filter((item) => item.job_id === jobId)
+
   const activeVendors = vendors.filter((vendor) => vendor.is_active).length
   const activeClients = clients.filter((client) => client.is_active).length
 
@@ -660,7 +1249,10 @@ async function handleSaveJob(
   return (
     <div className="vms-app">
       <aside className="sidebar">
-        <h2>Recruitment VMS</h2>
+        <h2 className="sidebar-brand">
+          <img src={sidebarLogo} alt="DM&I Technologies" width={167} height={156} />
+          <span className="sr-only">Recruitment VMS</span>
+        </h2>
 
         <nav aria-label="Main navigation">
           <a
@@ -668,7 +1260,7 @@ async function handleSaveJob(
             className={page === 'dashboard' ? 'active' : ''}
             onClick={() => setPage('dashboard')}
           >
-            Dashboard
+            {isClient ? 'Overview' : 'Dashboard'}
           </a>
 
           <a
@@ -676,39 +1268,91 @@ async function handleSaveJob(
             className={page === 'jobs' ? 'active' : ''}
             onClick={() => setPage('jobs')}
           >
-            Jobs
+            {isClient ? 'Our Jobs' : partnerView ? 'Requirements' : 'Jobs'}
           </a>
 
           <a
             href="#candidates"
-            onClick={(event) => event.preventDefault()}
+            className={page === 'candidates' ? 'active' : ''}
+            onClick={() => (isClient ? openClientCandidates('review') : openCandidates())}
           >
             Candidates
           </a>
 
-                      <a
+          {!partnerView && !isClient && canViewVendors && (
+            <a
               href="#vendors"
               className={page === 'vendors' ? 'active' : ''}
               onClick={() => setPage('vendors')}
             >
               Vendors
             </a>
+          )}
 
-          <a
-            href="#clients"
-            className={page === 'clients' ? 'active' : ''}
-            onClick={() => setPage('clients')}
-          >
-            Clients
-          </a>
+          {!partnerView && !isClient && canViewClients && (
+            <a
+              href="#clients"
+              className={page === 'clients' ? 'active' : ''}
+              onClick={() => setPage('clients')}
+            >
+              Clients
+            </a>
+          )}
 
-          <a
-            href="#reports"
-            onClick={(event) => event.preventDefault()}
-          >
-            Reports
-          </a>
+          {canManageUsers && (
+            <a
+              href="#users"
+              className={page === 'users' ? 'active' : ''}
+              onClick={() => setPage('users')}
+            >
+              Users
+            </a>
+          )}
+
+          {canManageUsers && (
+            <a
+              href="#feedback"
+              className={page === 'feedback' ? 'active' : ''}
+              onClick={(event) => {
+                event.preventDefault()
+                setPage('feedback')
+              }}
+            >
+              Feedback{feedbackNew ? <span className="nav-badge" aria-label={`${feedbackNew} new`}>{feedbackNew}</span> : null}
+            </a>
+          )}
+
+          {!partnerView && !isClient && (
+            <a
+              href="#reports"
+              className={page === 'reports' ? 'active' : ''}
+              onClick={(event) => {
+                event.preventDefault()
+                setPage('reports')
+              }}
+            >
+              Reports
+            </a>
+          )}
         </nav>
+
+        {me && (
+          <button
+            type="button"
+            className={`sidebar-identity${page === 'profile' ? ' active' : ''}`}
+            aria-label="Signed in user"
+            title="Open my profile"
+            onClick={() => setPage('profile')}
+          >
+            <span className="pf-avatar" aria-hidden="true">{initials(me.full_name, me.email)}</span>
+            <span className="sidebar-identity-text">
+              <strong title={me.email}>{me.full_name || me.email}</strong>
+              {me.full_name && <small className="sidebar-email">{me.email}</small>}
+              <small>{roleLabel}</small>
+              <small className="sidebar-profile-link">My profile</small>
+            </span>
+          </button>
+        )}
 
         <button className="logout-button" onClick={logout}>
           Sign out
@@ -716,7 +1360,45 @@ async function handleSaveJob(
       </aside>
 
       <main className="main-content">
-        {page === 'dashboard' ? (
+        {IS_DEMO && (
+          <p className="demo-banner" role="note">
+            <strong>DEMO</strong> Test environment with sample data, not real clients or candidates. Found a bug or have an idea? Use <strong>Feedback</strong> at the bottom right.
+          </p>
+        )}
+        {page === 'profile' && me ? (
+          <ProfilePage key={me.id} token={token} me={me} onUpdated={setMe} />
+        ) : isClient && me && page === 'dashboard' ? (
+          <ClientOverview me={me} jobs={visibleJobs} submissions={submissions} loading={loading} onOpenCandidates={(tab) => openClientCandidates(tab)} />
+        ) : isClient && page === 'jobs' ? (
+          <ClientJobsPage
+            jobs={visibleJobs}
+            submissions={submissions}
+            loading={loading}
+            onViewJD={setViewingJobJD}
+            onOpenCandidates={(tab, jobId) => openClientCandidates(tab, jobId ?? null)}
+          />
+        ) : isClient && page === 'candidates' ? (
+          <ClientCandidatesPage
+            key={clientNavKey}
+            token={token}
+            jobs={visibleJobs}
+            submissions={submissions}
+            loading={loading}
+            initialTab={clientTab}
+            initialJobId={clientJobFilter}
+            onReload={refreshSubmissions}
+            onViewJD={(jobId) => {
+              const job = jobs.find((item) => item.id === jobId)
+              if (job) setViewingJobJD(job)
+            }}
+          />
+        ) : page === 'feedback' && canManageUsers && token ? (
+          <FeedbackPage token={token} onCountChange={setFeedbackNew} />
+        ) : page === 'reports' && !partnerView && !isClient ? (
+          <ReportsPage token={token} clients={clients} />
+        ) : page === 'users' && canManageUsers && me ? (
+          <UsersPage token={token} me={me} vendors={vendors} clients={clients} />
+        ) : page === 'dashboard' ? (
           <>
             <header className="page-header" id="dashboard">
               <h1>Dashboard</h1>
@@ -735,61 +1417,40 @@ async function handleSaveJob(
               </p>
             )}
 
-                        <section className="stats-grid" aria-label="Management statistics">
-                            <StatCard
-                  title="Open Jobs"
-                  value={loading ? null : activeJobs}
-                  description="Requirements currently open"
-                  onClick={() => {
-                    setJobFilter('open')
-                    setPage('jobs')
-                  }}
-                />
-                  <StatCard
-                    title="Total Jobs"
-                    value={loading ? null : jobs.length}
-                    description="Jobs visible to your account"
-                    onClick={() => {
-                      setJobFilter('all')
-                      setPage('jobs')
-                    }}
-                  />
-
-              <StatCard
-                title="Active Vendors"
-                value={loading ? null : activeVendors}
-                description="Active vendor records returned by the API"
-                onClick={() => setPage('vendors')}
-              />
-
-              <StatCard
-                title="Active Clients"
-                value={loading ? null : activeClients}
-                description="Active client records returned by the API"
-                onClick={() => setPage('clients')}
-              />
-            </section>
-
-            <section className="welcome-card">
-              <h2>Recruitment Overview</h2>
-              {loading ? (
-                <p role="status">Loading data from the backend...</p>
-              ) : (
-                <p>
-                  {error
-                    ? 'Dashboard data could not be fully refreshed. Check the error above.'
-                    : 'Dashboard data loaded from the recruitment API.'}
-                </p>
-              )}
-
-              <button
-                onClick={() => token && void loadDashboard(token)}
-                disabled={loading}
-              >
-                Refresh dashboard
-              </button>
-            </section>
+            <DashboardOverview
+              jobs={visibleJobs}
+              submissions={submissions}
+              clients={clients}
+              activeVendors={activeVendors}
+              activeClients={activeClients}
+              loading={loading}
+              onRefresh={() => token && void loadDashboard(token)}
+              onOpenJobs={(filter) => {
+                setJobFilter(filter)
+                setPage('jobs')
+              }}
+              onOpenVendors={() => setPage('vendors')}
+              onOpenCandidates={() => openCandidates()}
+              hideClients={hideClientsInUI}
+              token={token}
+              showRecruiters={!partnerView && !isClient}
+              showRevenue={me?.user_type === 'super_admin'}
+              onOpenClients={() => setPage('clients')}
+              onSelectJob={setViewingJobJD}
+            />
           </>
+        ) : page === 'jobs' && partnerView ? (
+          <PartnerRequirementsPage
+            jobs={visibleJobs}
+            submissions={submissions}
+            loading={loading}
+            canSeeClients={!hideClientsInUI}
+            canSubmit={candidatePermissions.can_submit}
+            loadError={error}
+            onViewJD={setViewingJobJD}
+            onSubmitFor={(jobId) => openCandidates({ jobId, openSubmit: true })}
+            onViewSubmissions={(jobId) => openCandidates({ jobId })}
+          />
         ) : page === 'jobs' ? (
           <>
             <header className="page-header" id="jobs">
@@ -816,15 +1477,17 @@ async function handleSaveJob(
                   <p>
                     {loading
                       ? 'Loading job records...'
-                      : `${jobs.filter((job) => jobFilter === 'all' || job.status === 'open').length} job record(s)`}
+                      : `${jobs.filter((job) => ((jobFilter === 'all' || job.status === 'open') && jobListed(job)) && (!jobSearch.trim() || [job.title, String(job.id), job.status, String(job.client_id ?? ''), job.location, job.description].some((value) => String(value ?? '').toLowerCase().includes(jobSearch.trim().toLowerCase())))).length} job record(s)`}
                   </p>
                 </div>
 
-
+                                
                 <div className="jobs-actions">
-                    <button
+                    {canManageJobs && (
+                    <button data-tour="add-job"
                       type="button"
                       onClick={() => {
+                        cancelJobForm()
                         setError(null)
                         setSuccess(null)
                         setShowJobForm(true)
@@ -832,6 +1495,7 @@ async function handleSaveJob(
                     >
                       + Add Job Requirement
                     </button>
+                    )}
 
                     <button
                       type="button"
@@ -843,78 +1507,149 @@ async function handleSaveJob(
                   </div>
               </div>
 
+              <div className="jobs-search-row">
+                <label className="jobs-search-label" htmlFor="jobs-search">Search jobs</label>
+                <input
+                  id="jobs-search"
+                  type="search"
+                  className="jobs-search-input"
+                  placeholder="Search by job title, job ID, status, client ID, location, or description..."
+                  value={jobSearch}
+                  onChange={(event) => setJobSearch(event.target.value)}
+                  aria-label="Search jobs"
+                />
+                {jobSearch && (
+                  <button type="button" className="jobs-search-clear" onClick={() => setJobSearch('')}>Clear</button>
+                )}
+                {canManageJobs && jobs.some((job) => job.is_active === false) && (
+                  <label className="da-toggle">
+                    <input type="checkbox" checked={showInactiveJobs} onChange={(event) => setShowInactiveJobs(event.target.checked)} />
+                    Show deactivated ({jobs.filter((job) => job.is_active === false).length})
+                  </label>
+                )}
+              </div>
+
               {showJobForm && (
-                <form className="job-form" onSubmit={handleSaveJob}>
-                  <h3>Add Job Requirement</h3>
+                <form className="job-form" id="job-form" onSubmit={handleSaveJob}>
+                  <h3>{editingJobId !== null ? 'Edit Job Requirement' : 'Add Job Requirement'}</h3>
 
-                  <div className="job-form-grid">
-                  <label>
-                    Job Title *
-                    <input required value={jobForm.title} onChange={(event) => setJobForm((current) => ({ ...current, title: event.target.value }))} />
-                  </label>
+                  <div className="jd-upload-row">
+                    <label htmlFor="job-jd-upload">Upload JD (PDF, Word, image or flyer)</label>
+                    <input id="job-jd-upload" type="file" accept={JD_ACCEPT} onChange={handleJDFileSelected} disabled={parsingJD || savingJob} />
+                    <span>{parsingJD ? 'Reading the JD… images and flyers can take up to 20 seconds.' : jdFile ? `Original file “${jdFile.name}” will be saved with this job.` : editingJobId !== null && jobs.find((job) => job.id === editingJobId)?.jd_file_name ? `Current file “${jobs.find((job) => job.id === editingJobId)?.jd_file_name}” is kept. Choose a new file to replace it.` : 'PDF, DOCX, DOC, TXT, PNG, JPG or WEBP up to 10 MB. The text is filled into the job fields for you to review.'}</span>
+                  </div>
 
-                  <label>
-                    Client
-                    <select value={jobForm.client_id ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, client_id: event.target.value ? Number(event.target.value) : null }))}>
+                  <div className="vf-sections">
+                    <fieldset className="vf-section">
+                      <legend>Role</legend>
+                      <div className="vf-grid">
+                      <label className="vf-field vf-span-2">
+                        <span className="vf-label">Job title<span className="vf-req" aria-hidden="true"> *</span></span>
+                        <input required value={jobForm.title} onChange={(event) => setJobForm((current) => ({ ...current, title: event.target.value }))} />
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Client</span>
+                        <select value={jobForm.client_id ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, client_id: event.target.value ? Number(event.target.value) : null }))}>
                       <option value="">No client selected</option>
-                      {clients.map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}
+                      {clients.filter((client) => client.is_active || client.id === jobForm.client_id).map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}
                     </select>
-                  </label>
-
-                  <label>
-                    Job Description *
-                    <textarea required value={jobForm.description} onChange={(event) => setJobForm((current) => ({ ...current, description: event.target.value }))} />
-                  </label>
-
-                  <label>
-                    Mandatory Skills
-                    <textarea value={jobForm.mandatory_skills ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, mandatory_skills: event.target.value || null }))} />
-                  </label>
-
-                  <label>
-                    Preferred Skills
-                    <textarea value={jobForm.preferred_skills ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, preferred_skills: event.target.value || null }))} />
-                  </label>
-
-                  <label>Minimum Experience (years) *
-                    <input type="number" min="0" required value={jobForm.min_experience} onChange={(event) => setJobForm((current) => ({ ...current, min_experience: Number(event.target.value) }))} />
-                  </label>
-
-                  <label>Maximum Experience (years)
-                    <input type="number" min="0" value={jobForm.max_experience ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, max_experience: event.target.value === '' ? null : Number(event.target.value) }))} />
-                  </label>
-
-                  <label>Qualification
-                    <input value={jobForm.qualification ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, qualification: event.target.value || null }))} />
-                  </label>
-
-                  <label>Location *
-                    <input required value={jobForm.location} onChange={(event) => setJobForm((current) => ({ ...current, location: event.target.value }))} />
-                  </label>
-
-                  <label>Work Arrangement
-                    <select value={jobForm.work_arrangement ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, work_arrangement: event.target.value || null }))}>
+                      </label>
+                      {canManageJobs && (
+                      <label className="vf-field">
+                        <span className="vf-label">Recruiter</span>
+                        <select value={jobForm.recruiter_id ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, recruiter_id: event.target.value ? Number(event.target.value) : null }))}>
+                          <option value="">Unassigned</option>
+                          {recruiterOptions.map((recruiter) => <option key={recruiter.id} value={recruiter.id}>{recruiter.name}</option>)}
+                        </select>
+                        <small className="vf-hint">Owns this position; their closures are counted from it.</small>
+                      </label>
+                      )}
+                      {canChangeJobStatus && (
+                      <label className="vf-field">
+                        <span className="vf-label">Status</span>
+                        <select value={jobForm.status} onChange={(event) => setJobForm((current) => ({ ...current, status: event.target.value as 'draft' | 'open' | 'closed' }))}>
+                        <option value="draft">Draft</option>
+                        <option value="open">Open</option>
+                        <option value="closed">Close</option>
+                      </select>
+                      </label>
+                      )}
+                      <label className="vf-field">
+                        <span className="vf-label">Location<span className="vf-req" aria-hidden="true"> *</span></span>
+                        <input required value={jobForm.location} onChange={(event) => setJobForm((current) => ({ ...current, location: event.target.value }))} />
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Work arrangement</span>
+                        <select value={jobForm.work_arrangement ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, work_arrangement: event.target.value || null }))}>
                       <option value="">Select arrangement</option><option value="On-site">On-site</option><option value="Hybrid">Hybrid</option><option value="Remote">Remote</option>
                     </select>
-                  </label>
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Number of openings<span className="vf-req" aria-hidden="true"> *</span></span>
+                        <input type="number" min="1" required value={jobForm.openings} onChange={(event) => setJobForm((current) => ({ ...current, openings: Number(event.target.value) }))} />
+                      </label>
+                      </div>
+                    </fieldset>
 
-                  <label>Minimum Budget
-                    <input type="number" min="0" value={jobForm.budget_min ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, budget_min: event.target.value === '' ? null : Number(event.target.value) }))} />
-                  </label>
+                    <fieldset className="vf-section">
+                      <legend>Description and skills</legend>
+                      <div className="vf-grid vf-grid-2">
+                      <label className="vf-field vf-span-all">
+                        <span className="vf-label">Job description<span className="vf-req" aria-hidden="true"> *</span></span>
+                        <textarea className="vf-tall" required value={jobForm.description} onChange={(event) => setJobForm((current) => ({ ...current, description: event.target.value }))} />
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Mandatory skills</span>
+                        <textarea value={jobForm.mandatory_skills ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, mandatory_skills: event.target.value || null }))} />
+                        <small className="vf-hint">Separate skills with commas or new lines.</small>
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Preferred skills</span>
+                        <textarea value={jobForm.preferred_skills ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, preferred_skills: event.target.value || null }))} />
+                        <small className="vf-hint">Nice to have, not required.</small>
+                      </label>
+                      </div>
+                    </fieldset>
 
-                  <label>Maximum Budget
-                    <input type="number" min="0" value={jobForm.budget_max ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, budget_max: event.target.value === '' ? null : Number(event.target.value) }))} />
-                  </label>
+                    <fieldset className="vf-section">
+                      <legend>Experience and qualification</legend>
+                      <div className="vf-grid">
+                      <label className="vf-field">
+                        <span className="vf-label">Minimum experience (years)<span className="vf-req" aria-hidden="true"> *</span></span>
+                        <input type="number" min="0" required value={jobForm.min_experience} onChange={(event) => setJobForm((current) => ({ ...current, min_experience: Number(event.target.value) }))} />
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Maximum experience (years)</span>
+                        <input type="number" min="0" value={jobForm.max_experience ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, max_experience: event.target.value === '' ? null : Number(event.target.value) }))} />
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Qualification</span>
+                        <input value={jobForm.qualification ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, qualification: event.target.value || null }))} />
+                        <small className="vf-hint">e.g. B.Tech / MCA</small>
+                      </label>
+                      </div>
+                    </fieldset>
 
-                  <label>Number of Openings *
-                    <input type="number" min="1" required value={jobForm.openings} onChange={(event) => setJobForm((current) => ({ ...current, openings: Number(event.target.value) }))} />
-                  </label>
-
+                    <fieldset className="vf-section">
+                      <legend>Compensation</legend>
+                      <div className="vf-grid">
+                      <label className="vf-field">
+                        <span className="vf-label">Minimum budget</span>
+                        <input type="number" min="0" value={jobForm.budget_min ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, budget_min: event.target.value === '' ? null : Number(event.target.value) }))} />
+                        <small className="vf-hint">{jobForm.budget_min ? `= ${formatCtc(Number(jobForm.budget_min))}` : 'Yearly CTC in rupees, e.g. 1200000 = 12 LPA'}</small>
+                      </label>
+                      <label className="vf-field">
+                        <span className="vf-label">Maximum budget</span>
+                        <input type="number" min="0" value={jobForm.budget_max ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, budget_max: event.target.value === '' ? null : Number(event.target.value) }))} />
+                        <small className="vf-hint">{jobForm.budget_max ? `= ${formatCtc(Number(jobForm.budget_max))}` : 'Yearly CTC in rupees, e.g. 1200000 = 12 LPA'}</small>
+                      </label>
+                      </div>
+                    </fieldset>
                   </div>
 
                   <div className="form-actions job-form-actions">
-                    <button type="submit" disabled={savingJob}>{savingJob ? 'Saving...' : 'Save Job'}</button>
                     <button type="button" onClick={cancelJobForm} disabled={savingJob}>Cancel</button>
+                    <button type="submit" disabled={savingJob}>{savingJob ? 'Saving…' : editingJobId !== null ? 'Save changes' : 'Save job'}</button>
                   </div>
                 </form>
               )}
@@ -928,96 +1663,138 @@ async function handleSaveJob(
                   <table className="jobs-table">
                     <thead>
                       <tr>
+                        <th className="sno-col">S.No</th>
                         <th>Job title</th>
-                        <th>Client ID</th>
-                        <th>Location</th>
-                        <th>Experience</th>
-                        <th>Work arrangement</th>
-                        <th>Openings</th>
                         <th>Status</th>
-                        <th>Details</th>
+                        <th>Openings</th>
+                        <th>Client</th>
+                        <th>Recruiter</th>
+                        <th>Candidates</th>
+                        {canManageJobs && <th>Partners</th>}
+                        <th>JD</th>
+                        {canManageJobs && <th>Active</th>}
                       </tr>
                     </thead>
+
                     <tbody>
-                      {jobs
-                        .filter((job) => jobFilter === 'all' || job.status === 'open')
-                        .map((job) => {
-                          const record = job as Job & Record<string, unknown>
-                          const minExperience = record.min_experience
-                          const maxExperience = record.max_experience
-                          return (
-                            <tr key={job.id}>
-                              <td>
-                                <strong>{job.title}</strong>
-                                <span className="job-id">Job ID: {job.id}</span>
-                              </td>
-                              <td>{job.client_id ?? 'Not linked'}</td>
-                              <td>{String(record.location ?? '—')}</td>
-                              <td>
-                                {minExperience != null || maxExperience != null
-                                  ? `${minExperience ?? 0}–${maxExperience ?? 'Not specified'} years`
-                                  : '—'}
-                              </td>
-                              <td>{String(record.work_arrangement ?? '—')}</td>
-                              <td>{job.openings}</td>
-                              <td><span className="job-status">{job.status || 'Unknown'}</span></td>
-                              <td>
-                                <button type="button" className="job-view-button" onClick={() => setSelectedJob(job)}>
-                                  View details
+                        {jobs
+                      .filter((job) => (jobFilter === 'all' || job.status === 'open') && jobListed(job))
+                      .filter((job) => !jobSearch.trim() || [job.title, String(job.id), job.status, String(job.client_id ?? ''), job.location, job.description].some((value) => String(value ?? '').toLowerCase().includes(jobSearch.trim().toLowerCase())))
+                      .map((job, index) => (
+                        <tr key={job.id} className={job.is_active === false ? 'da-row-inactive' : undefined}>
+                          <td className="sno-col">{index + 1}</td>
+                          <td>
+                            <strong>{job.title}</strong>
+                            <span className="job-id">Job ID: {job.id}</span>
+                            {canManageJobs && (
+                              <button type="button" className="job-edit-link" aria-label={`Edit job ${job.title}`} onClick={() => startEditJob(job)}>
+                                Edit
+                              </button>
+                            )}
+                          </td>
+                          <td>
+                            <div className="job-status-control">
+                              <StatusBadge status={job.status} />
+                              {canChangeJobStatus && (
+                                <select aria-label={`Change status for ${job.title}`} value={['draft', 'open', 'closed'].includes(job.status) ? job.status : 'draft'} onChange={(event) => void handleJobStatusChange(job.id, event.target.value as 'draft' | 'open' | 'closed')}>
+                                  <option value="draft">Draft</option>
+                                  <option value="open">Open</option>
+                                  <option value="closed">Close</option>
+                                </select>
+                              )}
+                            </div>
+                          </td>
+                          <td>{job.openings}</td>
+                          <td>{job.client_id == null ? 'Not linked' : clients.find((client) => client.id === job.client_id)?.company_name ?? `Client #${job.client_id}`}</td>
+                          <td>
+                            {canManageJobs ? (
+                              <select
+                                className="rb-assign"
+                                aria-label={`Recruiter for ${job.title}`}
+                                value={job.recruiter_id ?? ''}
+                                disabled={togglingId !== null}
+                                onChange={(event) => void assignRecruiter(job, event.target.value ? Number(event.target.value) : null)}
+                              >
+                                <option value="">Unassigned</option>
+                                {recruiterOptions.map((recruiter) => <option key={recruiter.id} value={recruiter.id}>{recruiter.name}</option>)}
+                                {job.recruiter_id != null && !recruiterOptions.some((recruiter) => recruiter.id === job.recruiter_id) && (
+                                  <option value={job.recruiter_id}>{job.recruiter_name ?? 'Former recruiter'} (inactive)</option>
+                                )}
+                              </select>
+                            ) : (
+                              job.recruiter_name ?? <span className="no-assigned-jd">Unassigned</span>
+                            )}
+                          </td>
+                          <td>
+                            {candidateCount((item) => item.job_id === job.id) === 0 ? (
+                              <span className="no-assigned-jd">None yet</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="client-jd-button"
+                                aria-label={`View candidates for ${job.title}`}
+                                onClick={() => openCandidates({ jobId: job.id })}
+                              >
+                                Candidates ({candidateCount((item) => item.job_id === job.id)})
+                              </button>
+                            )}
+                          </td>
+                          {canManageJobs && (
+                            <td>
+                              <div className="pa-cell">
+                                {partnersOf(job.id).length === 0 ? (
+                                  <span className="no-assigned-jd">None assigned</span>
+                                ) : (
+                                  <span className="pa-names" title={partnersOf(job.id).map((item) => item.vendor_name).join(', ')}>
+                                    {partnersOf(job.id).slice(0, 2).map((item) => item.vendor_name).join(', ')}
+                                    {partnersOf(job.id).length > 2 && ` +${partnersOf(job.id).length - 2}`}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="pa-manage"
+                                  aria-label={`Manage partners for ${job.title}`}
+                                  onClick={() => setManagingPartnersJobId(job.id)}
+                                >
+                                  Manage
                                 </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
+                              </div>
+                            </td>
+                          )}
+                          <td>
+                            <button
+                              type="button"
+                              className="job-view-button"
+                              aria-label={`View JD for ${job.title}`}
+                              onClick={() => setViewingJobJD(job)}
+                            >
+                              {`${job.title}_JD`}
+                            </button>
+                          </td>
+                          {canManageJobs && (
+                            <td>
+                              <button
+                                type="button"
+                                className={job.is_active === false ? 'da-activate' : 'da-deactivate'}
+                                disabled={togglingId !== null}
+                                aria-label={`${job.is_active === false ? 'Activate' : 'Deactivate'} job ${job.title}`}
+                                onClick={() => void toggleActive('job', job.id, job.title, job.is_active === false)}
+                              >
+                                {togglingId === `job-${job.id}` ? 'Saving…' : job.is_active === false ? 'Activate' : 'Deactivate'}
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {jobs.filter((job) => (jobFilter === 'all' || job.status === 'open') && jobListed(job)).filter((job) => !jobSearch.trim() || [job.title, String(job.id), job.status, String(job.client_id ?? ''), job.location, job.description].some((value) => String(value ?? '').toLowerCase().includes(jobSearch.trim().toLowerCase()))).length === 0 && (
+                        <tr><td colSpan={20} className="jobs-no-results">No jobs match “{jobSearch}”. Try a different search.</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
               )}
 
-              {selectedJob && (() => {
-                const details = selectedJob as Job & Record<string, unknown>
-                const fields: Array<[string, unknown]> = [
-                  ['Job ID', selectedJob.id],
-                  ['Job Title', selectedJob.title],
-                  ['Status', selectedJob.status],
-                  ['Client ID', selectedJob.client_id ?? 'Not linked'],
-                  ['Job Description', details.description],
-                  ['Mandatory Skills', details.mandatory_skills],
-                  ['Preferred Skills', details.preferred_skills],
-                  ['Minimum Experience (years)', details.min_experience],
-                  ['Maximum Experience (years)', details.max_experience],
-                  ['Qualification', details.qualification],
-                  ['Location', details.location],
-                  ['Work Arrangement', details.work_arrangement],
-                  ['Minimum Budget', details.budget_min],
-                  ['Maximum Budget', details.budget_max],
-                  ['Number of Openings', selectedJob.openings],
-                ]
-                return (
-                  <div className="job-modal-backdrop" role="presentation" onClick={() => setSelectedJob(null)}>
-                    <section className="job-details-modal" role="dialog" aria-modal="true" aria-labelledby="job-details-title" onClick={(event) => event.stopPropagation()}>
-                      <div className="job-details-heading">
-                        <div>
-                          <h2 id="job-details-title">Job Requirement Details</h2>
-                          <p>Review all information saved for this job.</p>
-                        </div>
-                        <button type="button" className="job-modal-close" onClick={() => setSelectedJob(null)} aria-label="Close job details">×</button>
-                      </div>
-                      <div className="job-details-grid">
-                        {fields.map(([label, value]) => (
-                          <div className={`job-detail-item ${label === 'Job Description' || label.includes('Skills') ? 'job-detail-wide' : ''}`} key={label}>
-                            <span>{label}</span>
-                            <p>{value === null || value === undefined || value === '' ? 'Not provided' : String(value)}</p>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="form-actions">
-                        <button type="button" onClick={() => setSelectedJob(null)}>Close</button>
-                      </div>
-                    </section>
-                  </div>
-                )
-              })()}
+
             </section>
           </>
         ) : page === 'vendors' ? (
@@ -1051,7 +1828,8 @@ async function handleSaveJob(
                 </div>
 
                 <div className="vendor-heading-actions">
-                  <button
+                  {canManageVendors && (
+                  <button data-tour="add-vendor"
                     type="button"
                     onClick={() => {
                       setShowVendorForm(true)
@@ -1063,6 +1841,7 @@ async function handleSaveJob(
                   >
                     + Add Vendor
                   </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => token && void loadDashboard(token)}
@@ -1096,7 +1875,7 @@ async function handleSaveJob(
                   type="button"
                   onClick={() => {
                     setVendorSearch('')
-                    setVendorStatusFilter('ALL')
+                    setVendorStatusFilter('ACTIVE')
                   }}
                 >
                   Clear Filters
@@ -1104,7 +1883,7 @@ async function handleSaveJob(
               </div>
 
                       {showVendorForm && (
-
+                                            
                       <form className="client-form" onSubmit={handleSaveVendor}>
                         <h3>Register Vendor</h3>
 
@@ -1179,7 +1958,7 @@ async function handleSaveJob(
                         </div>
                       </form>
                     )}
-
+                                          
 
 
               {loading ? (
@@ -1193,16 +1972,21 @@ async function handleSaveJob(
                   <table className="jobs-table">
                     <thead>
                       <tr>
+                        <th className="sno-col">S.No</th>
                         <th>Vendor</th>
                         <th>Contact name</th>
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Status</th>
+                        <th>Candidates</th>
+                        <th>Requirements</th>
+                        {canManageVendors && <th>Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredVendors.map((vendor) => (
+                      {filteredVendors.map((vendor, index) => (
                         <tr key={vendor.id}>
+                          <td className="sno-col">{index + 1}</td>
                           <td>
                             <strong>{vendor.name}</strong>
                             <span className="job-id">Vendor ID: {vendor.id}</span>
@@ -1211,10 +1995,47 @@ async function handleSaveJob(
                           <td>{vendor.contact_email || 'Not provided'}</td>
                           <td>{vendor.contact_phone || 'Not provided'}</td>
                           <td>
-                            <span className="job-status">
-                              {vendor.is_active ? 'Active' : 'Inactive'}
-                            </span>
+                            <StatusBadge status={vendor.is_active ? 'active' : 'inactive'} />
                           </td>
+                          <td>
+                            {candidateCount((item) => item.vendor_id === vendor.id) === 0 ? (
+                              <span className="no-assigned-jd">None yet</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="client-jd-button"
+                                aria-label={`View candidates submitted by ${vendor.name}`}
+                                onClick={() => openCandidates({ vendorId: vendor.id })}
+                              >
+                                Candidates ({candidateCount((item) => item.vendor_id === vendor.id)})
+                              </button>
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="client-jd-button"
+                              aria-label={`Assigned requirements for ${vendor.name}`}
+                              onClick={() => setViewingPartnerId(vendor.id)}
+                            >
+                              {assignments.filter((item) => item.vendor_id === vendor.id).length === 0
+                                ? 'Assign'
+                                : `${assignments.filter((item) => item.vendor_id === vendor.id).length} assigned`}
+                            </button>
+                          </td>
+                          {canManageVendors && (
+                            <td>
+                              <button
+                                type="button"
+                                className={vendor.is_active ? 'da-deactivate' : 'da-activate'}
+                                disabled={togglingId !== null}
+                                aria-label={`${vendor.is_active ? 'Deactivate' : 'Activate'} partner ${vendor.name}`}
+                                onClick={() => void toggleActive('vendor', vendor.id, vendor.name, !vendor.is_active)}
+                              >
+                                {togglingId === `vendor-${vendor.id}` ? 'Saving…' : vendor.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -1223,6 +2044,23 @@ async function handleSaveJob(
               )}
             </section>
           </>
+        ) : page === 'candidates' ? (
+          <CandidatesPage
+            key={candidatesNavKey}
+            token={token}
+            submissions={submissions}
+            jobs={visibleJobs}
+            clients={clients}
+            loading={loading}
+            permissions={candidatePermissions}
+            initialFilters={candidateFilters}
+            loadError={error}
+            onReload={refreshSubmissions}
+            onOpenJob={(jobId) => {
+              const job = jobs.find((item) => item.id === jobId)
+              if (job) setViewingJobJD(job)
+            }}
+          />
         ) : (
           <>
             <header className="page-header" id="clients">
@@ -1253,13 +2091,15 @@ async function handleSaveJob(
                   </p>
                 </div>
 
-                <button
+                {canManageClients && (
+                <button data-tour="add-client"
                   type="button"
                   onClick={startAddClient}
                   disabled={saving}
                 >
                   + Add Client
                 </button>
+                )}
               </div>
 
                             <div className="client-filters">
@@ -1296,7 +2136,7 @@ async function handleSaveJob(
                   type="button"
                   onClick={() => {
                     setClientSearch('')
-                    setClientStatusFilter('ALL')
+                    setClientStatusFilter('ACTIVE')
                     setClientContactFilter('ALL')
                   }}
                 >
@@ -1349,6 +2189,24 @@ async function handleSaveJob(
       }))
     }
   />
+
+  <label htmlFor="client-fee">Fee % of annual CTC</label>
+  <input
+    id="client-fee"
+    type="number"
+    min="0.01"
+    max="100"
+    step="0.01"
+    placeholder="8.33"
+    value={clientForm.fee_percent}
+    onChange={(event) =>
+      setClientForm((current) => ({
+        ...current,
+        fee_percent: event.target.value,
+      }))
+    }
+  />
+  <small className="vf-hint">What DM&amp;I charges this client per hire. Leave empty for the default 8.33% (one month’s salary).</small>
 
   {editingClientId !== null && (
     <label className="checkbox-label">
@@ -1555,7 +2413,7 @@ async function handleSaveJob(
                   </div>
                 </form>
               )}
-
+			  
 			  {addingContactForClient !== null && (
   <form className="client-form" onSubmit={handleAddContact}>
     <h3>Add Contact</h3>
@@ -1658,17 +2516,21 @@ async function handleSaveJob(
                   <table className="jobs-table">
                     <thead>
                       <tr>
+                        <th className="sno-col">S.No</th>
                         <th>Company</th>
                         <th>Status</th>
                         <th>Address</th>
-                        <th>Contacts</th>
+                        <th>SPOC</th>
+                        <th>JD</th>
+                        <th>Candidates</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                       {filteredClients.map((client) => (
+                       {filteredClients.map((client, index) => (
                         <tr key={client.id}>
+                          <td className="sno-col">{index + 1}</td>
                           <td>
                             <strong>{client.company_name}</strong>
                             <span className="job-id">
@@ -1682,74 +2544,130 @@ async function handleSaveJob(
                           </td>
 
                           <td>
-                            <span className="job-status">
-                              {client.is_active ? 'Active' : 'Inactive'}
-                            </span>
+                            <StatusBadge status={client.is_active ? 'active' : 'inactive'} />
                           </td>
 
                           <td>{client.address || 'Not provided'}</td>
 
                                                     <td>
-                            {client.contacts.length === 0 ? (
-                              <span>No contacts</span>
-                            ) : (
-                              <ul className="client-contact-list">
-                                     <button
-                                              type="button"
-                                      className="add-contact-button"
-                                      onClick={() => startAddContact(client.id)}
-                                      disabled={saving}
-                                      >
-                                      + Add Contact
-                                    </button>
-                                                               {client.contacts
-                                   .filter(
-                                    (contact) =>
-                                   clientContactFilter === 'ALL' ||
-                                 contact.contact_type === clientContactFilter,
-                                          )
-                                      .map((contact) => (
-                                  <li
-                                    className="client-contact-item"
-                                    key={contact.id}
-                                  >
-                                    <div className="client-contact-details">
-                                      <strong>
-                                        {contact.name}
-                                        {contact.is_primary && ' (Primary)'}
-                                      </strong>
-                                      <span>Type: {contact.contact_type}</span>
-                                      <span>
-                                        Email: {contact.email || 'Not provided'}
-                                      </span>
-                                      <span>
-                                        Phone: {contact.phone || 'Not provided'}
-                                      </span>
-                                    </div>
+                            <div className="assigned-contact-cell">
+                              <button
+                                type="button"
+                                className="assigned-contact-toggle"
+                                aria-expanded={expandedClientContacts.includes(client.id)}
+                                onClick={() => setExpandedClientContacts((current) =>
+                                  current.includes(client.id)
+                                    ? current.filter((id) => id !== client.id)
+                                    : [...current, client.id],
+                                )}
+                              >
+                                SPOC ({client.contacts.length})
+                              </button>
+                              {expandedClientContacts.includes(client.id) && (
+                                <div className="assigned-contact-panel">
+                                  {canManageClients && (<button type="button" className="add-contact-button"
+                                    onClick={() => startAddContact(client.id)} disabled={saving}>
+                                    + Add Contact
+                                  </button>)}
+                                  {client.contacts.length === 0 ? (
+                                    <p className="no-client-contacts">No contacts added yet.</p>
+                                  ) : (
+                                    <ul className="client-contact-list">
+                                      {client.contacts.filter((contact) =>
+                                        clientContactFilter === 'ALL' || contact.contact_type === clientContactFilter,
+                                      ).map((contact) => (
+                                        <li className="client-contact-item" key={contact.id}>
+                                          <div className="client-contact-details">
+                                            <strong>{contact.name}{contact.is_primary && ' (Primary)'}</strong>
+                                            <span>Type: {contact.contact_type}</span>
+                                            <span>Email: {contact.email || 'Not provided'}</span>
+                                            <span>Phone: {contact.phone || 'Not provided'}</span>
+                                          </div>
+                                          {canManageClients && <button type="button" onClick={() => startEditContact(client.id, contact)} disabled={saving}>Edit</button>}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
 
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        startEditContact(client.id, contact)
-                                      }
-                                      disabled={saving}
-                                    >
-                                      Edit
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
+                          <td>
+                            <div className="client-assigned-jd-cell">
+                              {visibleJobs.filter((job) => job.client_id === client.id).length === 0 ? (
+                                <span className="no-assigned-jd">No assigned JD</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="client-jd-button"
+                                  onClick={() => {
+                                    setViewingClientJDsId(client.id)
+
+
+                                  }}
+                                  aria-label={`View ${visibleJobs.filter((job) => job.client_id === client.id).length} JDs assigned to ${client.company_name}`}
+                                >
+                                  View JDs ({visibleJobs.filter((job) => job.client_id === client.id).length})
+                                </button>
+                              )}
+                            </div>
+                          </td>
+
+                          <td>
+                            {candidateCount((item) => item.client_id === client.id) === 0 ? (
+                              <span className="no-assigned-jd">None yet</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="client-jd-button"
+                                aria-label={`View candidates for ${client.company_name}`}
+                                onClick={() => openCandidates({ clientId: client.id })}
+                              >
+                                Candidates ({candidateCount((item) => item.client_id === client.id)})
+                              </button>
                             )}
                           </td>
 
                           <td>
-                            <button
-                              type="button"
-                              onClick={() => startEditClient(client)}
-                              disabled={saving}
-                            >
-                              Edit Client
-                            </button>
+                            <div className="client-action-buttons">
+                              {canManageJobs && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setJobForm((current) => ({ ...current, client_id: client.id }))
+                                  setPage('jobs')
+                                  setError(null)
+                                  setSuccess(null)
+                                  setShowJobForm(true)
+                                }}
+                                disabled={saving || savingJob}
+                              >
+                                + Add Job Requirement
+                              </button>
+                              )}
+                              {canManageClients && (
+                              <button
+                                type="button"
+                                onClick={() => startEditClient(client)}
+                                disabled={saving}
+                              >
+                                Edit Client
+                              </button>
+                              )}
+                              {canManageClients && (
+                                <button
+                                  type="button"
+                                  className={client.is_active ? 'da-deactivate' : 'da-activate'}
+                                  disabled={togglingId !== null}
+                                  aria-label={`${client.is_active ? 'Deactivate' : 'Activate'} client ${client.company_name}`}
+                                  onClick={() => void toggleActive('client', client.id, client.company_name, !client.is_active)}
+                                >
+                                  {togglingId === `client-${client.id}` ? 'Saving…' : client.is_active ? 'Deactivate' : 'Activate'}
+                                </button>
+                              )}
+                              {!canManageJobs && !canManageClients && <span className="cd-muted">View only</span>}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1759,6 +2677,108 @@ async function handleSaveJob(
               )}
             </section>
           </>
+        )}
+      {viewingClientJDsId !== null && clients.some((client) => client.id === viewingClientJDsId) && (
+        <ClientPositionsModal
+          client={clients.find((client) => client.id === viewingClientJDsId) as Client}
+          jobs={visibleJobs}
+          canManageJobs={canManageJobs}
+          onClose={() => setViewingClientJDsId(null)}
+          onViewJD={(job) => {
+            setViewingClientJDsId(null)
+            setViewingJobJD(job)
+          }}
+          onAddJob={(clientId) => {
+            setJobForm((current) => ({ ...current, client_id: clientId }))
+            setPage('jobs')
+            setError(null)
+            setSuccess(null)
+            setShowJobForm(true)
+            setViewingClientJDsId(null)
+          }}
+        />
+      )}
+
+      {managingPartnersJobId != null && jobs.some((job) => job.id === managingPartnersJobId) && (
+        <JobPartnersModal
+          token={token}
+          job={jobs.find((job) => job.id === managingPartnersJobId) as Job}
+          vendors={vendors}
+          assignments={assignments}
+          submissions={submissions}
+          clientName={clientNameFor(jobs.find((job) => job.id === managingPartnersJobId) as Job)}
+          onClose={() => setManagingPartnersJobId(null)}
+          onSaved={async (message) => {
+            await refreshAssignments().catch(() => undefined)
+            if (message) {
+              setManagingPartnersJobId(null)
+              setError(null)
+              setSuccess(message)
+            }
+          }}
+        />
+      )}
+
+      {viewingPartnerId != null && vendors.some((vendor) => vendor.id === viewingPartnerId) && (
+        <PartnerRequirementsModal
+          token={token}
+          vendor={vendors.find((vendor) => vendor.id === viewingPartnerId) as Vendor}
+          jobs={visibleJobs}
+          clients={clients}
+          assignments={assignments}
+          submissions={submissions}
+          onClose={() => setViewingPartnerId(null)}
+          onChanged={refreshAssignments}
+        />
+      )}
+
+      {viewingJobJD && (
+        <JobJDModal
+          job={viewingJobJD}
+          clientName={viewingJobJD.client_name ?? clients.find((client) => client.id === viewingJobJD.client_id)?.company_name}
+          hideClient={hideClientsInUI}
+          token={token}
+          canManageJobs={canManageJobs}
+          onEdit={canManageJobs ? () => startEditJob(viewingJobJD) : undefined}
+          onClose={() => setViewingJobJD(null)}
+          onJobUpdated={(updated) => {
+            setJobs((current) => current.map((job) => (job.id === updated.id ? { ...job, ...updated } : job)))
+            setViewingJobJD((current) => (current && current.id === updated.id ? { ...current, ...updated } : current))
+          }}
+        />
+      )}
+        {me?.user_type === 'super_admin' && (
+          <button
+            type="button"
+            data-tour="help"
+            className="help-button"
+            aria-label="Help: start the guided tour"
+            onClick={() => {
+              setPage('dashboard')
+              setTourOpen(true)
+            }}
+          >
+            <span aria-hidden="true">?</span> Help
+          </button>
+        )}
+        {tourOpen && <GuidedTour steps={TOUR_STEPS} currentPage={page} onNavigate={tourNavigate} onClose={closeTour} />}
+        {token && me && (
+          <FeedbackButton
+            token={token}
+            pageLabel={
+              ({
+                dashboard: isClient ? 'Overview' : 'Dashboard',
+                jobs: isClient ? 'Our Jobs' : partnerView ? 'Requirements' : 'Jobs',
+                candidates: 'Candidates',
+                vendors: 'Vendors',
+                clients: 'Clients',
+                users: 'Users',
+                profile: 'My profile',
+                reports: 'Reports',
+                feedback: 'Feedback',
+              } as Record<Page, string>)[page]
+            }
+          />
         )}
       </main>
     </div>
