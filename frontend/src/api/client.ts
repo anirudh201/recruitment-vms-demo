@@ -137,7 +137,6 @@ export type ParsedJobDescription = Partial<Omit<CreateJobInput, 'client_id' | 's
   notice?: string | null
 }
 
-export type ParsedJobDescription = Partial<Omit<CreateJobInput, 'client_id' | 'status'>> & { description: string }
 
 export type Vendor = {
   id: number

@@ -814,7 +814,6 @@ async function handleSaveJob(
     }
 
     // Keep the original PDF/DOCX so "View JD" can open it later.
-    let attachError: string | null = null
     if (jdFile) {
       try {
         await uploadJobJDFile(token, createdJob.id, jdFile)
