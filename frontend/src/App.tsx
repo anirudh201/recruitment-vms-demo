@@ -813,6 +813,16 @@ async function handleSaveJob(
       }
     }
 
+    // Keep the original PDF/DOCX so "View JD" can open it later.
+    let attachError: string | null = null
+    if (jdFile) {
+      try {
+        await uploadJobJDFile(token, createdJob.id, jdFile)
+      } catch (err) {
+        attachError = err instanceof Error ? err.message : 'Unable to upload the JD file.'
+      }
+    }
+
     await loadDashboard(token)
     cancelJobForm()
     if (attachError) {
