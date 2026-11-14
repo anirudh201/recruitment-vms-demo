@@ -15,6 +15,7 @@ import { TOUR_STEPS, type TourPage } from './tourSteps'
 import logo from './assets/dmi-logo.webp'
 import sidebarLogo from './assets/dmi-logo-sidebar.webp'
 import { initials } from './profileUtils'
+import { JD_ACCEPT } from './jdFiles'
 import ClientPositionsModal from './components/ClientPositionsModal'
 import { formatCtc } from './positionFormat'
 import { ClientCandidatesPage, ClientJobsPage, ClientOverview, type ClientTab } from './components/ClientPortal'
@@ -33,6 +34,7 @@ import {
   IS_DEMO,
   setClientActive,
   setJobActive,
+  updateJobDetails,
   getRecruiterPerformance,
   setJobRecruiter,
   setVendorActive,
@@ -134,6 +136,7 @@ type ClientForm = {
   company_name: string
   address: string
   notes: string
+  fee_percent: string
   is_active: boolean
 }
 
@@ -146,6 +149,7 @@ type ContactForm = {
 }
 
 const emptyClientForm: ClientForm = {
+  fee_percent: '',
   company_name: '',
   address: '',
   notes: '',
@@ -221,6 +225,8 @@ function App() {
   const [expandedClientContacts, setExpandedClientContacts] = useState<number[]>([])
 
   const [savingJob, setSavingJob] = useState(false)
+  // set while the job form edits an existing job (null = adding a new one)
+  const [editingJobId, setEditingJobId] = useState<number | null>(null)
   const [parsingJD, setParsingJD] = useState(false)
   const [canChangeJobStatus, setCanChangeJobStatus] = useState(false)
   const [canManageJobs, setCanManageJobs] = useState(false)
@@ -472,6 +478,7 @@ function App() {
       company_name: client.company_name,
       address: client.address ?? '',
       notes: client.notes ?? '',
+      fee_percent: client.fee_percent != null ? String(client.fee_percent) : '',
       is_active: client.is_active,
     })
     setShowClientForm(true)
@@ -527,6 +534,7 @@ function App() {
           company_name: companyName,
           address: clientForm.address.trim() || null,
           notes: clientForm.notes.trim() || null,
+          fee_percent: clientForm.fee_percent.trim() ? Number(clientForm.fee_percent) : null,
           is_active: clientForm.is_active,
         })
 
@@ -536,6 +544,7 @@ function App() {
           company_name: companyName,
           address: clientForm.address.trim() || null,
           notes: clientForm.notes.trim() || null,
+          fee_percent: clientForm.fee_percent.trim() ? Number(clientForm.fee_percent) : null,
         })
 
         if (hasInitialContact) {
@@ -631,6 +640,7 @@ function App() {
 
   function cancelJobForm() {
   setShowJobForm(false)
+  setEditingJobId(null)
   setJdFile(null)
   setJobForm({
     title: '',
@@ -679,8 +689,9 @@ async function handleJDFileSelected(event: React.ChangeEvent<HTMLInputElement>) 
       budget_max: parsed.budget_max ?? current.budget_max,
       openings: parsed.openings ?? current.openings,
     }))
+    // keep the file even when its text couldn't be read (e.g. an image or an old .doc)
     setJdFile(file)
-    setSuccess('JD text extracted. Please review the populated fields before saving.')
+    setSuccess(parsed.notice ?? 'JD text extracted. Please review the populated fields before saving.')
   } catch (err) {
     setError(err instanceof Error ? err.message : 'Unable to extract text from this JD.')
   } finally {
@@ -706,6 +717,34 @@ async function handleJobStatusChange(jobId: number, status: 'draft' | 'open' | '
   } catch (err) {
     setError(err instanceof Error ? err.message : 'Unable to update job status.')
   }
+}
+
+function startEditJob(job: Job) {
+  setError(null)
+  setSuccess(null)
+  setJdFile(null)
+  setEditingJobId(job.id)
+  setJobForm({
+    title: job.title,
+    client_id: job.client_id ?? null,
+    description: job.description ?? '',
+    mandatory_skills: job.mandatory_skills ?? null,
+    preferred_skills: job.preferred_skills ?? null,
+    min_experience: job.min_experience ?? 0,
+    max_experience: job.max_experience ?? null,
+    qualification: job.qualification ?? null,
+    location: job.location ?? '',
+    work_arrangement: job.work_arrangement ?? null,
+    budget_min: job.budget_min ?? null,
+    budget_max: job.budget_max ?? null,
+    openings: job.openings ?? 1,
+    status: job.status as CreateJobInput['status'],
+    recruiter_id: job.recruiter_id ?? null,
+  })
+  setViewingJobJD(null)
+  setPage('jobs')
+  setShowJobForm(true)
+  window.setTimeout(() => document.getElementById('job-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
 }
 
 async function handleSaveJob(
@@ -755,12 +794,24 @@ async function handleSaveJob(
   setSuccess(null)
 
   try {
-    const createdJob = await createJob(token, {
+    const details = {
       ...jobForm,
       title: jobForm.title.trim(),
       description: jobForm.description.trim(),
       location: jobForm.location.trim(),
-    })
+    }
+    const editing = editingJobId !== null
+    const createdJob = editing ? await updateJobDetails(token, editingJobId, details) : await createJob(token, details)
+
+    // Keep the original PDF/DOCX so "View JD" can open it later.
+    let attachError: string | null = null
+    if (jdFile) {
+      try {
+        await uploadJobJDFile(token, createdJob.id, jdFile)
+      } catch (err) {
+        attachError = err instanceof Error ? err.message : 'Unable to upload the JD file.'
+      }
+    }
 
     // Keep the original PDF/DOCX so "View JD" can open it later.
     let attachError: string | null = null
@@ -777,13 +828,13 @@ async function handleSaveJob(
     if (attachError) {
       setError(`Job saved, but the original JD file was not attached: ${attachError} You can attach it from View JD.`)
     } else {
-      setSuccess('Job requirement created successfully.')
+      setSuccess(editing ? `${createdJob.title} was updated.` : 'Job requirement created successfully.')
     }
   } catch (err) {
     setError(
       err instanceof Error
         ? err.message
-        : 'Unable to create the job requirement.',
+        : editingJobId !== null ? 'Unable to save the changes.' : 'Unable to create the job requirement.',
     )
   } finally {
     setSavingJob(false)
@@ -1393,6 +1444,7 @@ async function handleSaveJob(
               hideClients={hideClientsInUI}
               token={token}
               showRecruiters={!partnerView && !isClient}
+              showRevenue={me?.user_type === 'super_admin'}
               onOpenClients={() => setPage('clients')}
               onSelectJob={setViewingJobJD}
             />
@@ -1445,6 +1497,7 @@ async function handleSaveJob(
                     <button data-tour="add-job"
                       type="button"
                       onClick={() => {
+                        cancelJobForm()
                         setError(null)
                         setSuccess(null)
                         setShowJobForm(true)
@@ -1487,13 +1540,13 @@ async function handleSaveJob(
               </div>
 
               {showJobForm && (
-                <form className="job-form" onSubmit={handleSaveJob}>
-                  <h3>Add Job Requirement</h3>
+                <form className="job-form" id="job-form" onSubmit={handleSaveJob}>
+                  <h3>{editingJobId !== null ? 'Edit Job Requirement' : 'Add Job Requirement'}</h3>
 
                   <div className="jd-upload-row">
-                    <label htmlFor="job-jd-upload">Upload JD (PDF or DOCX)</label>
-                    <input id="job-jd-upload" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleJDFileSelected} disabled={parsingJD || savingJob} />
-                    <span>{parsingJD ? 'Extracting JD text…' : jdFile ? `Original file “${jdFile.name}” will be saved with this job.` : 'Text will be extracted into the job fields for review.'}</span>
+                    <label htmlFor="job-jd-upload">Upload JD (PDF, Word, image or flyer)</label>
+                    <input id="job-jd-upload" type="file" accept={JD_ACCEPT} onChange={handleJDFileSelected} disabled={parsingJD || savingJob} />
+                    <span>{parsingJD ? 'Reading the JD… images and flyers can take up to 20 seconds.' : jdFile ? `Original file “${jdFile.name}” will be saved with this job.` : editingJobId !== null && jobs.find((job) => job.id === editingJobId)?.jd_file_name ? `Current file “${jobs.find((job) => job.id === editingJobId)?.jd_file_name}” is kept. Choose a new file to replace it.` : 'PDF, DOCX, DOC, TXT, PNG, JPG or WEBP up to 10 MB. The text is filled into the job fields for you to review.'}</span>
                   </div>
 
                   <div className="vf-sections">
@@ -1606,7 +1659,7 @@ async function handleSaveJob(
 
                   <div className="form-actions job-form-actions">
                     <button type="button" onClick={cancelJobForm} disabled={savingJob}>Cancel</button>
-                    <button type="submit" disabled={savingJob}>{savingJob ? 'Saving…' : 'Save job'}</button>
+                    <button type="submit" disabled={savingJob}>{savingJob ? 'Saving…' : editingJobId !== null ? 'Save changes' : 'Save job'}</button>
                   </div>
                 </form>
               )}
@@ -1643,6 +1696,11 @@ async function handleSaveJob(
                           <td>
                             <strong>{job.title}</strong>
                             <span className="job-id">Job ID: {job.id}</span>
+                            {canManageJobs && (
+                              <button type="button" className="job-edit-link" aria-label={`Edit job ${job.title}`} onClick={() => startEditJob(job)}>
+                                Edit
+                              </button>
+                            )}
                           </td>
                           <td>
                             <div className="job-status-control">
@@ -2141,6 +2199,24 @@ async function handleSaveJob(
       }))
     }
   />
+
+  <label htmlFor="client-fee">Fee % of annual CTC</label>
+  <input
+    id="client-fee"
+    type="number"
+    min="0.01"
+    max="100"
+    step="0.01"
+    placeholder="8.33"
+    value={clientForm.fee_percent}
+    onChange={(event) =>
+      setClientForm((current) => ({
+        ...current,
+        fee_percent: event.target.value,
+      }))
+    }
+  />
+  <small className="vf-hint">What DM&amp;I charges this client per hire. Leave empty for the default 8.33% (one month’s salary).</small>
 
   {editingClientId !== null && (
     <label className="checkbox-label">
@@ -2673,6 +2749,7 @@ async function handleSaveJob(
           hideClient={hideClientsInUI}
           token={token}
           canManageJobs={canManageJobs}
+          onEdit={canManageJobs ? () => startEditJob(viewingJobJD) : undefined}
           onClose={() => setViewingJobJD(null)}
           onJobUpdated={(updated) => {
             setJobs((current) => current.map((job) => (job.id === updated.id ? { ...job, ...updated } : job)))

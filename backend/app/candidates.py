@@ -21,7 +21,7 @@ from app.models import (
     JobVendorAssignment,
     User,
 )
-from app.partner_access import clients_see_candidate_contacts, hide_clients_from, is_client_user
+from app.partner_access import clients_see_candidate_contacts, hide_clients_from, is_client_user, is_partner_user
 
 router = APIRouter(prefix="/candidates", tags=["Candidates"])
 
@@ -107,6 +107,8 @@ class SubmissionResponse(BaseModel):
     resume_filename: str | None = None
     # Original name of the uploaded resume file, if one is attached to this submission.
     resume_file_name: str | None = None
+    # Annual CTC offered, in rupees (used for revenue)
+    offered_ctc: int | None = None
 
 
 # Load everything _submission_response reads in one go (avoids a query per row).
@@ -156,6 +158,7 @@ def _full_submission_response(item: CandidateSubmission, hide_client: bool = Fal
         primary_skills=item.candidate.primary_skills,
         resume_filename=item.candidate.resume_filename,
         resume_file_name=item.resume_file_name,
+        offered_ctc=item.offered_ctc,
     )
 
 
@@ -709,3 +712,30 @@ def download_submission_resume(
     if response is None:
         raise HTTPException(status_code=404, detail="No resume file is attached to this submission.")
     return response
+
+
+class OfferUpdate(BaseModel):
+    offered_ctc: int | None = Field(default=None, ge=0, le=1_000_000_000)
+
+
+@router.patch("/submissions/{submission_id}/offer", response_model=SubmissionResponse)
+def set_offered_ctc(
+    submission_id: int,
+    payload: OfferUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission("candidates.status.update")),
+):
+    """Record the annual CTC offered to a candidate (your team only). Used to calculate revenue."""
+    if is_partner_user(current_user) or is_client_user(current_user):
+        raise HTTPException(status_code=403, detail="You do not have permission to perform this action")
+    item = db.scalar(
+        select(CandidateSubmission)
+        .options(*_submission_options())
+        .where(CandidateSubmission.id == submission_id, CandidateSubmission.organization_id == current_user.organization_id)
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Candidate submission not found")
+    item.offered_ctc = payload.offered_ctc or None
+    db.commit()
+    db.refresh(item)
+    return _submission_response(item, hide_clients_from(current_user))

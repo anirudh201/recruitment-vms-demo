@@ -1,3 +1,4 @@
+import { JD_ACCEPT, canPreviewJd, jdKind } from '../jdFiles'
 import { useEffect, useState } from 'react'
 import { fetchJobJDFile, uploadJobJDFile, type Job } from '../api/client'
 
@@ -430,7 +431,9 @@ function OriginalFileBar({
   const [busy, setBusy] = useState<'open' | 'download' | 'upload' | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const fileName = job.jd_file_name ?? ''
-  const isPdf = fileName.toLowerCase().endsWith('.pdf')
+  const kind = jdKind(fileName)
+  const isPdf = kind === 'pdf'
+  const canOpenInTab = kind === 'pdf' || kind === 'image' || kind === 'text'
 
   async function handleOpen(mode: 'open' | 'download') {
     if (!token) {
@@ -440,7 +443,7 @@ function OriginalFileBar({
     setFileError(null)
     setBusy(mode)
     // A new tab must be opened synchronously inside the click, or popup blockers stop it.
-    const tab = mode === 'open' && isPdf ? window.open('', '_blank') : null
+    const tab = mode === 'open' && canOpenInTab ? window.open('', '_blank') : null
     try {
       const blob = await fetchJobJDFile(token, job.id)
       if (tab) {
@@ -484,7 +487,7 @@ function OriginalFileBar({
       <input
         type="file"
         hidden
-        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept={JD_ACCEPT}
         onChange={handleAttach}
         disabled={busy !== null}
       />
@@ -501,7 +504,7 @@ function OriginalFileBar({
           </div>
           <div className="jd-file-actions">
             <button type="button" className="jd-file-button" disabled={busy !== null} onClick={() => void handleOpen('open')}>
-              {busy === 'open' ? 'Opening…' : isPdf ? 'Open original' : 'Open in Word'}
+              {busy === 'open' ? 'Opening…' : isPdf ? 'Open original' : kind === 'image' ? 'Open image' : kind === 'word' ? 'Open in Word' : 'Open'}
             </button>
             <button
               type="button"
@@ -520,7 +523,7 @@ function OriginalFileBar({
             <span className="jd-file-label">Original JD file</span>
             <strong>No file attached to this job</strong>
           </div>
-          {canManage && <div className="jd-file-actions">{attachInput('Attach JD (PDF/DOCX)')}</div>}
+          {canManage && <div className="jd-file-actions">{attachInput('Attach JD (PDF, Word or image)')}</div>}
         </>
       )}
       {fileError && (
@@ -562,6 +565,13 @@ function OriginalPreview({ job, token }: { job: Job; token: string | null }) {
   if (!token) return <p className="jd-original-message">Your session has expired. Please sign in again.</p>
   if (error) return <p className="jd-original-message jd-file-error" role="alert">{error}</p>
   if (!src) return <p className="jd-original-message">Loading original JD…</p>
+  if (jdKind(job.jd_file_name) === 'image') {
+    return (
+      <div className="jd-original-image-wrap">
+        <img className="jd-original-image" src={src} alt={`Original JD: ${job.jd_file_name ?? job.title}`} />
+      </div>
+    )
+  }
   return <iframe className="jd-original-frame" title={`Original JD: ${job.jd_file_name ?? job.title}`} src={src} />
 }
 
@@ -577,6 +587,7 @@ export default function JobJDModal({
   hideClient = false,
   onClose,
   onJobUpdated,
+  onEdit,
 }: {
   job: Job
   clientName?: string
@@ -586,6 +597,8 @@ export default function JobJDModal({
   hideClient?: boolean
   onClose: () => void
   onJobUpdated: (job: Job) => void
+  // opens the job form to edit this job (Super Admin)
+  onEdit?: () => void
 }) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -595,14 +608,14 @@ export default function JobJDModal({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const hasPdf = (job.jd_file_name ?? '').toLowerCase().endsWith('.pdf')
+  const hasPdf = canPreviewJd(job.jd_file_name)   // PDFs and images show inside the viewer
   const [view, setView] = useState<'original' | 'details'>(hasPdf ? 'original' : 'details')
   const showOriginal = hasPdf && view === 'original'
 
   function handleJobUpdated(updated: Job) {
     onJobUpdated(updated)
     // A PDF that was just attached is the best thing to show straight away.
-    if ((updated.jd_file_name ?? '').toLowerCase().endsWith('.pdf')) setView('original')
+    if (canPreviewJd(updated.jd_file_name)) setView('original')
   }
 
   const sections = parseStructuredJD(job)
@@ -726,6 +739,7 @@ export default function JobJDModal({
             <div className="jd-sidebar-field"><span>Openings</span><strong>{job.openings}</strong></div>
             <div className="jd-sidebar-field"><span>Work Mode</span><strong>{job.work_arrangement || 'Not specified'}</strong></div>
             <div className="jd-sidebar-actions">
+              {onEdit && <button type="button" className="jd-edit-job" onClick={onEdit}>Edit job</button>}
               <button type="button" onClick={onClose}>Close</button>
             </div>
           </aside>

@@ -65,6 +65,8 @@ export type CandidateSubmission = {
   resume_filename?: string | null
   // Original name of an uploaded resume file attached to this submission
   resume_file_name?: string | null
+  // annual CTC offered, in rupees (used for revenue)
+  offered_ctc?: number | null
 }
 
 export type CandidatePermissions = {
@@ -129,6 +131,12 @@ export type CreateJobInput = {
   recruiter_id?: number | null
 }
 
+export type ParsedJobDescription = Partial<Omit<CreateJobInput, 'client_id' | 'status'>> & {
+  description: string
+  // set when text couldn't be read (image without OCR, old .doc) or was read by OCR
+  notice?: string | null
+}
+
 export type ParsedJobDescription = Partial<Omit<CreateJobInput, 'client_id' | 'status'>> & { description: string }
 
 export type Vendor = {
@@ -158,6 +166,8 @@ export type Client = {
   company_name: string
   address: string | null
   notes: string | null
+  // fee DM&I charges, % of the hire's annual CTC (null = default 8.33%)
+  fee_percent?: number | null
   is_active: boolean
   created_at: string
   contacts: ClientContact[]
@@ -388,6 +398,7 @@ export type CreateClientInput = {
   company_name: string
   address?: string | null
   notes?: string | null
+  fee_percent?: number | null
   is_active?: boolean
 }
 
@@ -709,9 +720,12 @@ export type RecruiterPerformance = {
     closures: number
     closures_in_period: number
     joined: number
+    yet_to_join?: number
+    dropped_out?: number
   }
   positions: Array<{ id: number; title: string; status: string; client_id: number | null; client_name: string | null; openings: number; submissions: number; closures: number }>
-  clients: Array<{ id: number; name: string; positions: number; closures: number }>
+  // closures per client; id 0 = positions with no client linked
+  clients: Array<{ id: number; name: string; positions: number; closures: number; joined?: number }>
   vendors: Array<{ id: number; name: string; positions: number; submissions: number; closures: number }>
   closures: Array<{ submission_id: number; candidate_name: string; job_id: number; job_title: string; client_name: string | null; vendor_name: string | null; status: string; closed_at: string | null; in_period: boolean }>
 }
@@ -845,4 +859,33 @@ export async function downloadFeedbackExcel(token: string, filters: { status?: s
   const response = await fetch(`${API_BASE_URL}/feedback/export?${params}`, { headers: { Authorization: `Bearer ${token}` } })
   if (!response.ok) throw new Error(`The Excel file could not be created (${response.status}).`)
   return response.blob()
+}
+
+// Edit a job's details (Super Admin). Only the fields sent are changed.
+export function updateJobDetails(token: string, jobId: number, input: Partial<CreateJobInput>): Promise<Job> {
+  return sendCandidateRequest<Job>(`/jobs/${jobId}`, token, 'PATCH', input)
+}
+
+// ---------------------------------------------------------------------------
+// Revenue (Super Admin): fee % x annual CTC for every candidate who joined
+// ---------------------------------------------------------------------------
+
+export type RevenueSummary = {
+  default_fee_percent: number
+  total: number
+  joins: number
+  missing_ctc: number
+  buckets: Array<{ key: string; revenue: number; joins: number }>
+  clients: Array<{ client_name: string; revenue: number; joins: number }>
+  items: Array<{ submission_id: number; candidate_name: string; job_title: string; client_name: string; joined_at: string; ctc: number; ctc_source: 'candidate' | 'job' | 'missing'; fee_percent: number; revenue: number }>
+}
+
+export function getRevenue(token: string, range: { start: Date; end: Date }, bucket: 'day' | 'month'): Promise<RevenueSummary> {
+  const params = new URLSearchParams({ start: range.start.toISOString(), end: range.end.toISOString(), bucket, tz_offset: String(-new Date().getTimezoneOffset()) })
+  return request<RevenueSummary>(`/revenue?${params}`, token)
+}
+
+// Record the annual CTC offered to a candidate (your team only).
+export function setOfferedCtc(token: string, submissionId: number, offeredCtc: number | null): Promise<CandidateSubmission> {
+  return sendCandidateRequest<CandidateSubmission>(`/candidates/submissions/${submissionId}/offer`, token, 'PATCH', { offered_ctc: offeredCtc })
 }

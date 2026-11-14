@@ -1,7 +1,9 @@
+from decimal import Decimal
 
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Numeric,
     LargeBinary,
     func,
     text,
@@ -73,6 +75,8 @@ class Client(Base):
     company_name: Mapped[str] = mapped_column(String(200), nullable=False)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Fee DM&I charges this client, as a % of the hire's annual CTC (empty = the default, 8.33%)
+    fee_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False
     )
@@ -423,6 +427,8 @@ class CandidateSubmission(Base):
         String(30), default="Submitted", server_default=text("'Submitted'"), nullable=False
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Annual CTC offered to this candidate, in rupees (used for revenue)
+    offered_ctc: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Uploaded resume (PDF/DOCX) for this submission. Stored per submission so one partner's
     # file never overwrites another's for the same candidate.
     resume_file_name: Mapped[str | None] = mapped_column(String(300), nullable=True)

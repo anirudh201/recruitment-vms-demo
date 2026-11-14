@@ -23,9 +23,9 @@ function RecruiterDetail({
 
   const t = recruiter.totals
   const stats: Array<[string, number]> = [
-    [`Closures ${periodLabel.toLowerCase()}`, t.closures_in_period],
-    ['Closures (all time)', t.closures],
-    ['Joined', t.joined],
+    ['Closures', t.closures],
+    ['Yet to join', t.yet_to_join ?? 0],
+    ['Dropped out', t.dropped_out ?? 0],
     ['Positions', t.positions],
     ['Submissions', t.submissions],
     ['In process', t.in_process],
@@ -77,22 +77,30 @@ function RecruiterDetail({
           )}
         </section>
 
-        <div className="rb-two">
-          <section className="rb-section" aria-label="Clients">
-            <h3>Clients <span>{recruiter.clients.length}</span></h3>
-            {recruiter.clients.length === 0 ? (
-              <p className="rb-empty">No clients yet.</p>
-            ) : (
-              <ul className="rb-list">
-                {recruiter.clients.map((client) => (
-                  <li key={client.id}>
-                    <strong>{client.name}</strong>
-                    <span>{plural(client.positions, 'position')} · {plural(client.closures, 'closure')}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+        <section className="rb-section" aria-label="Closures by client">
+          <h3>Closures by client <span>{recruiter.clients.filter((client) => client.id !== 0).length}</span></h3>
+          {recruiter.clients.length === 0 ? (
+            <p className="rb-empty">No positions assigned yet.</p>
+          ) : (
+            <div className="rb-table-wrap">
+              <table className="rb-table">
+                <thead><tr><th className="sno-col">S.No</th><th>Client</th><th>Positions</th><th>Closures</th><th>Joined</th></tr></thead>
+                <tbody>
+                  {recruiter.clients.map((client, index) => (
+                    <tr key={client.id}>
+                      <td className="sno-col">{index + 1}</td>
+                      <td>{client.id === 0 ? <span className="rb-empty">{client.name}</span> : <strong>{client.name}</strong>}</td>
+                      <td>{client.positions}</td>
+                      <td><strong>{client.closures}</strong></td>
+                      <td>{client.joined ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
           <section className="rb-section" aria-label="Partners">
             <h3>Partners (vendors) <span>{recruiter.vendors.length}</span></h3>
             {recruiter.vendors.length === 0 ? (
@@ -108,7 +116,7 @@ function RecruiterDetail({
               </ul>
             )}
           </section>
-        </div>
+
 
         <section className="rb-section" aria-label="Closures">
           <h3>Closures <span>{t.closures}</span></h3>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { CandidateSubmission, Client, Job } from '../api/client'
 import { DROPPED_STATUSES, PERIOD_LABELS, PLACED_STATUSES, computeDashboard, getPeriodRange, niceTicks, type Period } from '../dashboardStats'
 import RecruiterBoard from './RecruiterBoard'
+import RevenueCard from './RevenueCard'
 
 type Props = {
   jobs: Job[]
@@ -20,6 +21,8 @@ type Props = {
   // Recruiter performance board (your team only)
   token?: string | null
   showRecruiters?: boolean
+  // Revenue replaces Submission Trends (Super Admin only)
+  showRevenue?: boolean
   onSelectJob: (job: Job) => void
   // Only used by tests, to pin "today".
   now?: Date
@@ -179,6 +182,7 @@ export default function DashboardOverview({
   hideClients = false,
   token = null,
   showRecruiters = false,
+  showRevenue = false,
   onSelectJob,
   now,
 }: Props) {
@@ -301,13 +305,17 @@ export default function DashboardOverview({
         )}
 
         <div className="vx-right-stack">
-          <section className="vx-card" aria-label="Submission trends">
-            <div className="vx-card-head">
-              <h2>Submission Trends</h2>
-              <span className="vx-card-sub">{periodLabel}</span>
-            </div>
-            <TrendChart points={stats.trend} periodLabel={periodLabel} />
-          </section>
+          {showRevenue ? (
+            <RevenueCard key={period} token={token} range={periodRange} bucket={period === 'year' ? 'month' : 'day'} periodLabel={periodLabel} />
+          ) : (
+            <section className="vx-card" aria-label="Submission trends">
+              <div className="vx-card-head">
+                <h2>Submission Trends</h2>
+                <span className="vx-card-sub">{periodLabel}</span>
+              </div>
+              <TrendChart points={stats.trend} periodLabel={periodLabel} />
+            </section>
+          )}
 
           <section className="vx-card" aria-label="Submissions by stage">
             <div className="vx-card-head">

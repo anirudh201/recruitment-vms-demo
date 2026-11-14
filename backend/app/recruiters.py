@@ -120,13 +120,15 @@ def recruiter_performance(
                 "closures": sum(1 for item in job_subs if item.status in CLOSED_STATUSES),
             })
 
+        # closures per client (positions with no client are grouped so their closures still show)
         clients: dict[int, dict] = {}
         for job in own_jobs:
-            if job.client is None:
-                continue
-            entry = clients.setdefault(job.client.id, {"id": job.client.id, "name": job.client.company_name, "positions": 0, "closures": 0})
+            key = job.client.id if job.client is not None else 0
+            name = job.client.company_name if job.client is not None else "No client linked"
+            entry = clients.setdefault(key, {"id": key, "name": name, "positions": 0, "closures": 0, "joined": 0})
             entry["positions"] += 1
             entry["closures"] += sum(1 for item in closed if item.job_id == job.id)
+            entry["joined"] += sum(1 for item in closed if item.job_id == job.id and item.status == "Joined")
 
         vendors: dict[int, dict] = {}
         for job_id, vendor_id, vendor_name in assigned_partners:
@@ -167,16 +169,20 @@ def recruiter_performance(
             "totals": {
                 "positions": len(own_jobs),
                 "open_positions": sum(1 for job in own_jobs if job.status == "open"),
-                "clients": len(clients),
+                "clients": sum(1 for key in clients if key != 0),
                 "vendors": len(vendors),
                 "submissions": len(own_subs),
                 "in_process": sum(1 for item in own_subs if item.status in IN_PROCESS_STATUSES),
                 "closures": len(closed),
                 "closures_in_period": len(closed_in_period),
                 "joined": sum(1 for item in closed if item.status == "Joined"),
+                # selected or offer accepted, not joined yet
+                "yet_to_join": sum(1 for item in own_subs if item.status in ("Selected", "Offer Accepted")),
+                # were selected / accepted an offer, then declined, withdrew or were rejected
+                "dropped_out": sum(1 for item in own_subs if item.id in first_closed and item.status in ("Offer Declined", "Withdrawn", "Rejected")),
             },
             "positions": positions,
-            "clients": sorted(clients.values(), key=lambda entry: (-entry["closures"], entry["name"].lower())),
+            "clients": sorted(clients.values(), key=lambda entry: (-entry["closures"], entry["id"] == 0, entry["name"].lower())),
             "vendors": sorted(vendors.values(), key=lambda entry: (-entry["closures"], -entry["submissions"], entry["name"].lower())),
             "closures": closures,
         })

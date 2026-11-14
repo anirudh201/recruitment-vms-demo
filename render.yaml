@@ -1,0 +1,56 @@
+# Render Blueprint for the DEMO site (free plan).
+# Render reads this file when you choose New > Blueprint. Values marked "sync: false"
+# are asked for in the Render dashboard, so no secrets are stored in the repository.
+# Step-by-step guide: DEMO_DEPLOYMENT.md
+
+services:
+  # ---------- Backend API (FastAPI) ----------
+  - type: web
+    name: vms-demo-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Update the database, add sample data the very first time, then start the API.
+    startCommand: alembic upgrade head && python -m app.seed_demo --if-empty && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL          # Neon connection string (direct, not pooled)
+        sync: false
+      - key: CORS_ORIGINS          # the demo website's address, e.g. https://vms-demo.onrender.com
+        sync: false
+      - key: DEMO_PASSWORD         # password for all demo logins except the admin (12+ characters)
+        sync: false
+      - key: DEMO_ADMIN_PASSWORD   # password for admin@dmi-demo.com (12+ characters)
+        sync: false
+      - key: JWT_SECRET_KEY        # random secret for sign-in tokens
+        generateValue: true
+      - key: FILE_STORAGE          # keep uploaded JDs/resumes in the database (free disk is wiped on restart)
+        value: database
+      - key: DEMO_MODE             # allows the demo-data script to run
+        value: "true"
+
+  # ---------- Website (React, built to static files) ----------
+  - type: web
+    name: vms-demo
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL          # the backend's address, e.g. https://vms-demo-api.onrender.com
+        sync: false
+      - key: VITE_DEMO_MODE
+        value: "true"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

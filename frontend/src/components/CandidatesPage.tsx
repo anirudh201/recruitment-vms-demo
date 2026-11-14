@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { formatCtc } from '../positionFormat'
 import {
   fetchSubmissionResume,
   getSubmissionHistory,
   parseResume,
+  setOfferedCtc,
   uploadSubmissionResume,
   type ResumeFields,
   submitCandidate,
@@ -431,6 +433,65 @@ function ResumeFact({
   )
 }
 
+function OfferCtcFact({
+  token,
+  submission,
+  canEdit,
+  onChanged,
+}: {
+  token: string | null
+  submission: CandidateSubmission
+  canEdit: boolean
+  onChanged: (message: string) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [lakhs, setLakhs] = useState(submission.offered_ctc ? String(submission.offered_ctc / 100000) : '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    if (!token) return
+    const value = lakhs.trim() ? Number(lakhs) : null
+    if (value !== null && (!Number.isFinite(value) || value <= 0 || value > 1000)) {
+      setError('Enter the annual CTC in lakhs, e.g. 12.5')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await setOfferedCtc(token, submission.id, value === null ? null : Math.round(value * 100000))
+      setEditing(false)
+      await onChanged(value === null ? 'Offered CTC cleared.' : `Offered CTC saved: ${formatCtc(Math.round(value * 100000))}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save the CTC.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <span className="rv-ctc-edit">
+        <input aria-label="Annual CTC offered in lakhs" type="number" min="0.1" step="0.1" placeholder="e.g. 12.5" value={lakhs} onChange={(event) => setLakhs(event.target.value)} />
+        <span>LPA</span>
+        <button type="button" className="cd-link" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="cd-link" onClick={() => setEditing(false)}>Cancel</button>
+        {error && <small className="rs-error" role="alert">{error}</small>}
+      </span>
+    )
+  }
+  return (
+    <>
+      {submission.offered_ctc ? formatCtc(submission.offered_ctc) : 'Not recorded'}
+      {canEdit && (
+        <button type="button" className="cd-link rv-ctc-link" onClick={() => setEditing(true)}>
+          {submission.offered_ctc ? 'Edit' : 'Add CTC'}
+        </button>
+      )}
+    </>
+  )
+}
+
 function SubmissionDrawer({
   token,
   submission,
@@ -541,6 +602,11 @@ function SubmissionDrawer({
             </Fact>
             <Fact label="Submitted">{formatDate(submission.created_at)}</Fact>
             <Fact label="Last updated">{formatDate(submission.updated_at)}</Fact>
+            {(permissions.can_update_status || submission.offered_ctc) && (
+              <Fact label="Annual CTC offered">
+                <OfferCtcFact token={token} submission={submission} canEdit={permissions.can_update_status && !permissions.is_vendor_user} onChanged={onChanged} />
+              </Fact>
+            )}
           </dl>
           {submission.notes && <p className="cd-notes"><strong>Notes:</strong> {submission.notes}</p>}
         </section>

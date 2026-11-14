@@ -46,6 +46,8 @@ class ClientCreate(BaseModel):
     company_name: str = Field(min_length=1, max_length=200)
     address: str | None = None
     notes: str | None = None
+    # % of the hire's annual CTC; empty = the default (8.33%)
+    fee_percent: float | None = Field(default=None, gt=0, le=100)
     contacts: list[ClientContactCreate] = Field(default_factory=list)
 
 
@@ -53,6 +55,7 @@ class ClientUpdate(BaseModel):
     company_name: str | None = Field(default=None, min_length=1, max_length=200)
     address: str | None = None
     notes: str | None = None
+    fee_percent: float | None = Field(default=None, gt=0, le=100)
     is_active: bool | None = None
 
 class ClientContactResponse(BaseModel):
@@ -75,6 +78,7 @@ class ClientResponse(BaseModel):
     company_name: str
     address: str | None
     notes: str | None
+    fee_percent: float | None = None
     is_active: bool
     created_at: datetime
     contacts: list[ClientContactResponse] = Field(default_factory=list)
@@ -138,6 +142,7 @@ def create_client(
         company_name=company_name,
         address=payload.address,
         notes=payload.notes,
+        fee_percent=payload.fee_percent,
         is_active=True,
     )
 
