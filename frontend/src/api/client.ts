@@ -55,7 +55,13 @@ export type CandidateSubmission = {
   client_id?: number | null
   client_name?: string | null
   vendor_name?: string | null
+  // Who submitted it (hidden from client logins)
+  submitted_by_name?: string | null
+  submitted_by_email?: string | null
+  submitted_by_type?: 'Team' | 'Partner' | null
+  submitted_by_role?: string | null
   phone?: string | null
+  pan_number?: string | null
   total_experience?: number | null
   relevant_experience?: number | null
   current_employer?: string | null
@@ -102,6 +108,7 @@ export type SubmitCandidateInput = {
   full_name: string
   email: string
   phone?: string | null
+  pan_number?: string | null
   total_experience?: number | null
   relevant_experience?: number | null
   current_employer?: string | null
@@ -136,7 +143,6 @@ export type ParsedJobDescription = Partial<Omit<CreateJobInput, 'client_id' | 's
   // set when text couldn't be read (image without OCR, old .doc) or was read by OCR
   notice?: string | null
 }
-
 
 export type Vendor = {
   id: number
@@ -653,6 +659,7 @@ export type ResumeFields = {
   full_name: string | null
   email: string | null
   phone: string | null
+  pan_number?: string | null
   total_experience: number | null
   relevant_experience: number | null
   current_employer: string | null

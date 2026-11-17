@@ -20,7 +20,7 @@ const ROLE_HELP: Record<string, string> = {
   Vendor: 'Channel-partner login. Sees only assigned requirements and its own candidates.',
   Client: 'Client-company login. Reviews only candidates your team sends to that company.',
 }
-const ROLE_LABEL: Record<string, string> = { Vendor: 'Channel partner', Client: 'Client' }
+const ROLE_LABEL: Record<string, string> = { Recruiter: 'Talent Acquisition Specialist (TAS)', Vendor: 'Channel partner', Client: 'Client' }
 
 function generatePassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
@@ -371,7 +371,7 @@ export default function UsersPage({
               </label>
               <label className="cd-field cd-field-wide">
                 <span>Designation</span>
-                <input value={form.jobTitle} maxLength={120} onChange={(event) => setForm({ ...form, jobTitle: event.target.value })} placeholder="e.g. Senior Recruiter, HR Manager" />
+                <input value={form.jobTitle} maxLength={120} onChange={(event) => setForm({ ...form, jobTitle: event.target.value })} placeholder="e.g. Senior TAS, HR Manager" />
               </label>
               <label className="cd-field cd-field-wide">
                 <span>Email *</span>

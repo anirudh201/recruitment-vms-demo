@@ -91,7 +91,7 @@ export default function ProfilePage({ token, me, onUpdated }: { token: string | 
           <label htmlFor="pf-name">Full name</label>
           <input id="pf-name" maxLength={200} value={details.full_name} onChange={(event) => setDetails({ ...details, full_name: event.target.value })} placeholder="e.g. Anil Kumar" />
           <label htmlFor="pf-title">Designation</label>
-          <input id="pf-title" maxLength={120} value={details.job_title} onChange={(event) => setDetails({ ...details, job_title: event.target.value })} placeholder="e.g. Senior Recruiter" />
+          <input id="pf-title" maxLength={120} value={details.job_title} onChange={(event) => setDetails({ ...details, job_title: event.target.value })} placeholder="e.g. Senior TAS" />
           <label htmlFor="pf-phone">Phone</label>
           <input id="pf-phone" type="tel" maxLength={30} value={details.phone} onChange={(event) => setDetails({ ...details, phone: event.target.value })} placeholder="e.g. +91 98765 43210" />
           <label htmlFor="pf-email">Email (your username)</label>

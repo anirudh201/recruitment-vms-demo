@@ -360,6 +360,8 @@ class Candidate(Base):
     full_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Indian PAN, stored in capitals (e.g. ABCDE1234F); used to catch the same person sent twice
+    pan_number: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     total_experience: Mapped[float | None] = mapped_column(nullable=True)
     relevant_experience: Mapped[float | None] = mapped_column(nullable=True)
     current_employer: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -451,6 +453,7 @@ class CandidateSubmission(Base):
     candidate: Mapped["Candidate"] = relationship(back_populates="submissions")
     job: Mapped["Job"] = relationship()
     vendor: Mapped["Vendor | None"] = relationship()
+    submitted_by: Mapped["User"] = relationship(foreign_keys=[submitted_by_user_id])
     status_history: Mapped[list["CandidateStatusHistory"]] = relationship(
         back_populates="submission",
         cascade="all, delete-orphan",

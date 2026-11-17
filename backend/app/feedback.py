@@ -21,7 +21,7 @@ router = APIRouter(prefix="/feedback", tags=["Feedback"])
 
 KIND_LABEL = {"bug": "Bug", "feature": "Feature idea", "other": "Other"}
 STATUS_LABEL = {"new": "New", "in_progress": "In progress", "done": "Done", "wont_fix": "Won't fix"}
-ROLE_LABEL = {"Super Admin": "Super Admin", "Recruiter": "Recruiter", "Vendor": "Channel partner", "Client": "Client"}
+ROLE_LABEL = {"Super Admin": "Super Admin", "Recruiter": "TAS", "Vendor": "Channel partner", "Client": "Client"}
 
 
 class FeedbackCreate(BaseModel):

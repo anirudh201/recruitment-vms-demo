@@ -301,7 +301,18 @@ def _skills(lines: list[str]) -> str | None:
     return ", ".join(unique[:25]) or None
 
 
-FIELDS = ("full_name", "email", "phone", "total_experience", "relevant_experience", "current_employer",
+PAN_IN_TEXT = re.compile(r"\b([A-Z]{5}\s?[0-9]{4}\s?[A-Z])\b")
+
+
+def _pan(lines: list[str]) -> str | None:
+    """A PAN written in the resume, e.g. 'PAN: ABCDE1234F'."""
+    for line in lines:
+        for match in PAN_IN_TEXT.finditer(line.upper() if re.search(r"\bpan\b", line, re.I) else line):
+            return match.group(1).replace(" ", "")
+    return None
+
+
+FIELDS = ("full_name", "email", "phone", "pan_number", "total_experience", "relevant_experience", "current_employer",
           "current_location", "highest_qualification", "primary_skills")
 
 
@@ -311,6 +322,7 @@ def parse_lines(lines: list[str]) -> dict:
         "full_name": _name(lines),
         "email": _email(lines),
         "phone": _phone(lines),
+        "pan_number": _pan(lines),
         "total_experience": total,
         "relevant_experience": relevant,
         "current_employer": _employer(lines),

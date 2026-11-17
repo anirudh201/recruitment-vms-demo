@@ -151,6 +151,14 @@ def _rate(numerator: int, denominator: int) -> float:
 # Report builders
 # ---------------------------------------------------------------------------
 
+def _submitter(item) -> str | None:
+    user = item.submitted_by
+    if user is None:
+        return None
+    kind = "Partner" if user.vendor_id is not None and not any(r.name == "Super Admin" for r in user.roles) else "Team"
+    return f"{user.full_name or user.email} ({user.email}) · {kind}"
+
+
 def build_submissions(ctx: Ctx) -> list[dict]:
     rows = []
     for item in ctx.period_subs():
@@ -158,8 +166,10 @@ def build_submissions(ctx: Ctx) -> list[dict]:
             "candidate": item.candidate.full_name,
             "email": item.candidate.email,
             "phone": item.candidate.phone,
+            "pan": item.candidate.pan_number,
             **ctx.job_fields(item.job_id),
             "partner": item.vendor.name if item.vendor else "Internal",
+            "submitted_by": _submitter(item),
             "status": item.status,
             "experience": item.candidate.total_experience,
             "employer": item.candidate.current_employer,
@@ -272,17 +282,17 @@ C = Column
 REPORTS: dict[str, Report] = {
     report.key: report
     for report in [
-        Report("submissions", "Candidate submissions", "Every candidate submitted in the period, with their position, client, partner, recruiter and current status.", [
-            C("candidate", "Candidate"), C("email", "Email"), C("phone", "Phone"), C("position", "Position"), C("client", "Client"),
-            C("partner", "Partner"), C("recruiter", "Recruiter"), C("status", "Status"), C("experience", "Total exp. (yrs)", "number"),
+        Report("submissions", "Candidate submissions", "Every candidate submitted in the period, with their position, client, partner, TAS and current status.", [
+            C("candidate", "Candidate"), C("email", "Email"), C("phone", "Phone"), C("pan", "PAN"), C("position", "Position"), C("client", "Client"),
+            C("partner", "Partner"), C("submitted_by", "Submitted by"), C("recruiter", "TAS"), C("status", "Status"), C("experience", "Total exp. (yrs)", "number"),
             C("employer", "Current employer"), C("location", "Location"), C("submitted_on", "Submitted on", "date"), C("updated_on", "Last updated", "date"),
         ], build_submissions),
         Report("closures", "Closures", "Candidates who reached Selected, Offer Accepted or Joined in the period (dated by when they first got there).", [
             C("candidate", "Candidate"), C("position", "Position"), C("client", "Client"), C("partner", "Partner"),
-            C("recruiter", "Recruiter"), C("stage", "Stage"), C("closed_on", "Closed on", "date"),
+            C("recruiter", "TAS"), C("stage", "Stage"), C("closed_on", "Closed on", "date"),
         ], build_closures),
         Report("jobs", "Positions", "Every position created in the period, with its owner, budget and how far its candidates have got (all time).", [
-            C("job_id", "Job ID", "number"), C("position", "Position"), C("client", "Client"), C("recruiter", "Recruiter"), C("status", "Status"),
+            C("job_id", "Job ID", "number"), C("position", "Position"), C("client", "Client"), C("recruiter", "TAS"), C("status", "Status"),
             C("openings", "Openings", "number", True), C("min_exp", "Min exp. (yrs)", "number"), C("max_exp", "Max exp. (yrs)", "number"),
             C("qualification", "Qualification"), C("ctc_min", "Offered CTC min (₹/yr)", "money"), C("ctc_max", "Offered CTC max (₹/yr)", "money"),
             C("partners", "Partners", "number"), C("submissions", "Submissions", "number", True), C("sent_to_client", "Sent to client", "number", True),
@@ -294,8 +304,8 @@ REPORTS: dict[str, Report] = {
             C("sent_to_client", "Sent to client", "number", True), C("interviews", "Interviews", "number", True),
             C("closures", "Closures", "number", True), C("closure_rate", "Closure rate", "percent", ratio=("closures", "submissions")),
         ], build_partners, summary=True),
-        Report("recruiters", "Recruiter performance", "For candidates submitted in the period on each recruiter's positions.", [
-            C("recruiter", "Recruiter"), C("email", "Email"), C("status", "Status"), C("positions", "Positions", "number", True),
+        Report("recruiters", "TAS performance", "For candidates submitted in the period on the positions each Talent Acquisition Specialist (TAS) owns.", [
+            C("recruiter", "TAS"), C("email", "Email"), C("status", "Status"), C("positions", "Positions", "number", True),
             C("open_positions", "Open positions", "number", True), C("submissions", "Submissions", "number", True),
             C("sent_to_client", "Sent to client", "number", True), C("closures", "Closures", "number", True), C("joined", "Joined", "number", True),
             C("closure_rate", "Closure rate", "percent", ratio=("closures", "submissions")),

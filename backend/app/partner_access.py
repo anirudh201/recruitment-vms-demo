@@ -46,6 +46,11 @@ def clients_see_candidate_contacts() -> bool:
     return os.getenv("CLIENTS_SEE_CANDIDATE_CONTACTS", "false").strip().lower() in TRUE_VALUES
 
 
+def clients_see_candidate_pan() -> bool:
+    # PAN is identity data: hidden from client logins unless CLIENTS_SEE_CANDIDATE_PAN=true in .env.
+    return os.getenv("CLIENTS_SEE_CANDIDATE_PAN", "false").strip().lower() in TRUE_VALUES
+
+
 def company_access_blocked(user) -> str | None:
     """Reason a partner/client login may not be used because its company is deactivated."""
     if any(role.name == "Super Admin" for role in getattr(user, "roles", [])):

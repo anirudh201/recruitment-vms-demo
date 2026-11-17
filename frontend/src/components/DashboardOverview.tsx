@@ -218,7 +218,7 @@ export default function DashboardOverview({
             value={stats.totalJobs}
             loading={loading}
             tone="flat"
-            note={`${plural(stats.openPositions, 'open position')}`}
+            note={`${plural(stats.openPositions, 'opening')} to fill`}
             onClick={() => onOpenJobs('all')}
           />
           <Kpi
