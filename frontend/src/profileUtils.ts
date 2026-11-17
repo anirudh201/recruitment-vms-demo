@@ -9,12 +9,12 @@ export function initials(name: string | null | undefined, email: string): string
 
 export const ROLE_NAMES: Record<string, string> = {
   super_admin: 'Super Admin',
-  recruiter: 'Recruiter',
+  recruiter: 'Talent Acquisition Specialist (TAS)',
   partner: 'Channel partner',
   client: 'Client',
   staff: 'Team member',
   'Super Admin': 'Super Admin',
-  Recruiter: 'Recruiter',
+  Recruiter: 'Talent Acquisition Specialist (TAS)',
   Vendor: 'Channel partner',
   Client: 'Client',
 }

@@ -1,11 +1,12 @@
 """Candidate profile and job-submission API endpoints."""
+import re
 from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -21,15 +22,31 @@ from app.models import (
     JobVendorAssignment,
     User,
 )
-from app.partner_access import clients_see_candidate_contacts, hide_clients_from, is_client_user, is_partner_user
+from app.partner_access import clients_see_candidate_contacts, clients_see_candidate_pan, hide_clients_from, is_client_user, is_partner_user
 
 router = APIRouter(prefix="/candidates", tags=["Candidates"])
+
+
+PAN_PATTERN = re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]")
+
+
+def normalize_pan(value: str | None) -> str | None:
+    """'abcde 1234 f' -> 'ABCDE1234F'; blank -> None; wrong shape -> ValueError."""
+    if value is None:
+        return None
+    cleaned = re.sub(r"[\s-]", "", str(value)).upper()
+    if not cleaned:
+        return None
+    if not PAN_PATTERN.fullmatch(cleaned):
+        raise ValueError("PAN must be 10 characters: 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F)")
+    return cleaned
 
 
 class CandidateDetails(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     email: EmailStr
     phone: str | None = Field(default=None, max_length=30)
+    pan_number: str | None = Field(default=None, max_length=20)
     total_experience: float | None = Field(default=None, ge=0)
     relevant_experience: float | None = Field(default=None, ge=0)
     current_employer: str | None = Field(default=None, max_length=200)
@@ -37,6 +54,11 @@ class CandidateDetails(BaseModel):
     highest_qualification: str | None = Field(default=None, max_length=300)
     primary_skills: str | None = None
     resume_filename: str | None = Field(default=None, max_length=500)
+
+    @field_validator("pan_number")
+    @classmethod
+    def check_pan(cls, value: str | None) -> str | None:
+        return normalize_pan(value)
 
 
 class SubmissionCreate(CandidateDetails):
@@ -59,6 +81,7 @@ class CandidateResponse(BaseModel):
     full_name: str
     email: str
     phone: str | None
+    pan_number: str | None = None
     total_experience: float | None
     relevant_experience: float | None
     current_employer: str | None
@@ -98,6 +121,7 @@ class SubmissionResponse(BaseModel):
     client_name: str | None = None
     vendor_name: str | None = None
     phone: str | None = None
+    pan_number: str | None = None
     total_experience: float | None = None
     relevant_experience: float | None = None
     current_employer: str | None = None
@@ -109,6 +133,11 @@ class SubmissionResponse(BaseModel):
     resume_file_name: str | None = None
     # Annual CTC offered, in rupees (used for revenue)
     offered_ctc: int | None = None
+    # Who submitted it: their login, and whether they are the internal team or a partner
+    submitted_by_name: str | None = None
+    submitted_by_email: str | None = None
+    submitted_by_type: str | None = None   # "Team" or "Partner"
+    submitted_by_role: str | None = None   # e.g. "Talent Acquisition Specialist (TAS)", "Super Admin", or the partner company
 
 
 # Load everything _submission_response reads in one go (avoids a query per row).
@@ -117,6 +146,8 @@ def _submission_options():
         selectinload(CandidateSubmission.candidate),
         selectinload(CandidateSubmission.job).selectinload(Job.client),
         selectinload(CandidateSubmission.vendor),
+        selectinload(CandidateSubmission.submitted_by).selectinload(User.roles),
+        selectinload(CandidateSubmission.submitted_by).selectinload(User.vendor),
     )
 
 
@@ -127,14 +158,35 @@ def _submission_response(
     if not for_client:
         return response
     # Client logins: never the supplying partner or internal notes; contact details only if allowed.
-    hidden = {"vendor_id": None, "vendor_name": None, "notes": None}
+    hidden = {"vendor_id": None, "vendor_name": None, "notes": None, "submitted_by_name": None,
+              "submitted_by_email": None, "submitted_by_type": None, "submitted_by_role": None}
     if not clients_see_candidate_contacts():
         hidden.update({"candidate_email": None, "phone": None, "resume_filename": None, "resume_file_name": None})
+    if not clients_see_candidate_pan():
+        hidden["pan_number"] = None
     return response.model_copy(update=hidden)
+
+
+ROLE_LABELS = {"Vendor": "Partner", "Recruiter": "Talent Acquisition Specialist (TAS)"}
+
+
+def _submitter_fields(item: CandidateSubmission) -> dict:
+    user = item.submitted_by
+    if user is None:
+        return {}
+    roles = [ROLE_LABELS.get(role.name, role.name) for role in user.roles]
+    partner = is_partner_user(user)
+    return {
+        "submitted_by_name": user.full_name or user.email,
+        "submitted_by_email": user.email,
+        "submitted_by_type": "Partner" if partner else "Team",
+        "submitted_by_role": (user.vendor.name if partner and user.vendor else ", ".join(roles)) or None,
+    }
 
 
 def _full_submission_response(item: CandidateSubmission, hide_client: bool = False) -> SubmissionResponse:
     return SubmissionResponse(
+        **_submitter_fields(item),
         id=item.id,
         candidate_id=item.candidate_id,
         candidate_name=item.candidate.full_name,
@@ -150,6 +202,7 @@ def _full_submission_response(item: CandidateSubmission, hide_client: bool = Fal
         client_name=None if hide_client or item.job.client is None else item.job.client.company_name,
         vendor_name=item.vendor.name if item.vendor is not None else None,
         phone=item.candidate.phone,
+        pan_number=item.candidate.pan_number,
         total_experience=item.candidate.total_experience,
         relevant_experience=item.candidate.relevant_experience,
         current_employer=item.candidate.current_employer,
@@ -228,6 +281,7 @@ def submit_candidate(
             full_name=payload.full_name.strip(),
             email=email,
             phone=payload.phone,
+            pan_number=payload.pan_number,
             total_experience=payload.total_experience,
             relevant_experience=payload.relevant_experience,
             current_employer=payload.current_employer,
@@ -254,6 +308,31 @@ def submit_candidate(
                     status_code=409,
                     detail="Could not create the candidate due to a data conflict.",
                 )
+
+    if payload.pan_number:
+        # The same PAN under a different email is the same person: don't let them be sent twice for one job.
+        same_pan = db.scalar(
+            select(CandidateSubmission)
+            .join(Candidate, Candidate.id == CandidateSubmission.candidate_id)
+            .where(
+                Candidate.organization_id == current_user.organization_id,
+                Candidate.pan_number == payload.pan_number,
+                Candidate.id != candidate.id,
+                CandidateSubmission.job_id == job.id,
+            )
+        )
+        if same_pan is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="A candidate with this PAN number has already been submitted for this job.",
+            )
+        if not candidate.pan_number:
+            candidate.pan_number = payload.pan_number
+        elif candidate.pan_number != payload.pan_number:
+            raise HTTPException(
+                status_code=409,
+                detail="This email is already on file with a different PAN number. Check the PAN or the email.",
+            )
 
     # Check for an existing submission before attempting the insert.
     existing_submission = db.scalar(

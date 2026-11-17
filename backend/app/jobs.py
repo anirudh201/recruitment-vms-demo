@@ -481,7 +481,7 @@ def _check_recruiter(db: Session, current_user: User, recruiter_id: int | None) 
         or not recruiter.is_active
         or not any(role.name == "Recruiter" for role in recruiter.roles)
     ):
-        raise HTTPException(status_code=422, detail="Choose an active recruiter from your organization.")
+        raise HTTPException(status_code=422, detail="Choose an active Talent Acquisition Specialist (TAS) from your organization.")
 
 
 class JobAssignmentResponse(BaseModel):

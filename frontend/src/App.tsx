@@ -813,15 +813,6 @@ async function handleSaveJob(
       }
     }
 
-    // Keep the original PDF/DOCX so "View JD" can open it later.
-    if (jdFile) {
-      try {
-        await uploadJobJDFile(token, createdJob.id, jdFile)
-      } catch (err) {
-        attachError = err instanceof Error ? err.message : 'Unable to upload the JD file.'
-      }
-    }
-
     await loadDashboard(token)
     cancelJobForm()
     if (attachError) {
@@ -1154,7 +1145,7 @@ async function handleSaveJob(
       setJobs((current) => current.map((item) => (item.id === job.id ? { ...item, ...updated } : item)))
       setSuccess(recruiterId === null ? `${job.title} no longer has a recruiter.` : `${job.title} is now owned by ${updated.recruiter_name ?? 'the selected recruiter'}.`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The recruiter could not be assigned.')
+      setError(err instanceof Error ? err.message : 'The TAS could not be assigned.')
     } finally {
       setTogglingId(null)
     }
@@ -1199,7 +1190,7 @@ async function handleSaveJob(
   const canManageVendors = can('vendors.manage')
   const canViewVendors = canManageVendors || can('vendors.view')
   const canManageUsers = me ? me.permissions.includes('users.manage') : false
-  const roleLabel = !me ? '' : me.user_type === 'super_admin' ? 'Super Admin' : me.user_type === 'recruiter' ? 'Recruiter'
+  const roleLabel = !me ? '' : me.user_type === 'super_admin' ? 'Super Admin' : me.user_type === 'recruiter' ? 'TAS'
     : me.user_type === 'partner' ? `Channel partner${me.vendor_name ? ` · ${me.vendor_name}` : ''}`
       : me.user_type === 'client' ? `Client${me.client_name ? ` · ${me.client_name}` : ''}` : me.roles.join(', ')
   const openClientCandidates = (tab: ClientTab, jobId: number | null = null) => {
@@ -1565,7 +1556,7 @@ async function handleSaveJob(
                       </label>
                       {canManageJobs && (
                       <label className="vf-field">
-                        <span className="vf-label">Recruiter</span>
+                        <span className="vf-label">Talent Acquisition Specialist (TAS)</span>
                         <select value={jobForm.recruiter_id ?? ''} onChange={(event) => setJobForm((current) => ({ ...current, recruiter_id: event.target.value ? Number(event.target.value) : null }))}>
                           <option value="">Unassigned</option>
                           {recruiterOptions.map((recruiter) => <option key={recruiter.id} value={recruiter.id}>{recruiter.name}</option>)}
@@ -1677,7 +1668,7 @@ async function handleSaveJob(
                         <th>Status</th>
                         <th>Openings</th>
                         <th>Client</th>
-                        <th>Recruiter</th>
+                        <th>TAS</th>
                         <th>Candidates</th>
                         {canManageJobs && <th>Partners</th>}
                         <th>JD</th>
@@ -1719,7 +1710,7 @@ async function handleSaveJob(
                             {canManageJobs ? (
                               <select
                                 className="rb-assign"
-                                aria-label={`Recruiter for ${job.title}`}
+                                aria-label={`TAS for ${job.title}`}
                                 value={job.recruiter_id ?? ''}
                                 disabled={togglingId !== null}
                                 onChange={(event) => void assignRecruiter(job, event.target.value ? Number(event.target.value) : null)}

@@ -80,6 +80,7 @@ type SubmitForm = {
   full_name: string
   email: string
   phone: string
+  pan_number: string
   total_experience: string
   relevant_experience: string
   current_employer: string
@@ -91,7 +92,7 @@ type SubmitForm = {
 }
 
 const RESUME_FIELDS: Array<keyof ResumeFields & keyof SubmitForm> = [
-  'full_name', 'email', 'phone', 'total_experience', 'relevant_experience',
+  'full_name', 'email', 'phone', 'pan_number', 'total_experience', 'relevant_experience',
   'current_employer', 'current_location', 'highest_qualification', 'primary_skills',
 ]
 
@@ -126,6 +127,7 @@ function SubmitCandidateModal({
     full_name: '',
     email: '',
     phone: '',
+    pan_number: '',
     total_experience: '',
     relevant_experience: '',
     current_employer: '',
@@ -210,6 +212,8 @@ function SubmitCandidateModal({
     const total = numberOrNull(form.total_experience)
     const relevant = numberOrNull(form.relevant_experience)
     if (total === 'invalid' || relevant === 'invalid') return setError('Experience must be a number of years (0 or more).')
+    const pan = form.pan_number.replace(/[\s-]/g, '').toUpperCase()
+    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) return setError('PAN must be 10 characters: 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).')
 
     const text = (value: string) => (value.trim() === '' ? null : value.trim())
     setSaving(true)
@@ -219,6 +223,7 @@ function SubmitCandidateModal({
         full_name: form.full_name.trim(),
         email: form.email.trim(),
         phone: text(form.phone),
+        pan_number: pan || null,
         total_experience: total,
         relevant_experience: relevant,
         current_employer: text(form.current_employer),
@@ -303,6 +308,7 @@ function SubmitCandidateModal({
               <label className="cd-field"><span>Full name *{fromResume('full_name')}</span><input value={form.full_name} onChange={set('full_name')} className={autoFilled.has('full_name') ? 'rs-filled' : undefined} maxLength={200} required /></label>
               <label className="cd-field"><span>Email *{fromResume('email')}</span><input type="email" value={form.email} onChange={set('email')} className={autoFilled.has('email') ? 'rs-filled' : undefined} maxLength={320} required /></label>
               <label className="cd-field"><span>Phone{fromResume('phone')}</span><input value={form.phone} onChange={set('phone')} className={autoFilled.has('phone') ? 'rs-filled' : undefined} maxLength={30} /></label>
+              <label className="cd-field"><span>PAN number{fromResume('pan_number')}</span><input value={form.pan_number} onChange={set('pan_number')} className={autoFilled.has('pan_number') ? 'rs-filled cd-pan' : 'cd-pan'} maxLength={10} placeholder="ABCDE1234F" autoComplete="off" spellCheck={false} aria-describedby="pan-hint" /><small id="pan-hint">10 characters: 5 letters, 4 digits, 1 letter.</small></label>
               <label className="cd-field"><span>Current location{fromResume('current_location')}</span><input value={form.current_location} onChange={set('current_location')} className={autoFilled.has('current_location') ? 'rs-filled' : undefined} maxLength={200} /></label>
               <label className="cd-field"><span>Total experience (years){fromResume('total_experience')}</span><input type="number" min="0" step="0.1" value={form.total_experience} onChange={set('total_experience')} className={autoFilled.has('total_experience') ? 'rs-filled' : undefined} /></label>
               <label className="cd-field"><span>Relevant experience (years){fromResume('relevant_experience')}</span><input type="number" min="0" step="0.1" value={form.relevant_experience} onChange={set('relevant_experience')} className={autoFilled.has('relevant_experience') ? 'rs-filled' : undefined} /></label>
@@ -316,7 +322,7 @@ function SubmitCandidateModal({
                   <small>No file? Paste a shared link to the resume instead.</small>
                 </label>
               )}
-              <label className="cd-field cd-field-wide"><span>Notes for the recruiter</span><textarea rows={2} value={form.notes} onChange={set('notes')} /></label>
+              <label className="cd-field cd-field-wide"><span>Notes for the TAS</span><textarea rows={2} value={form.notes} onChange={set('notes')} /></label>
             </div>
             <p className="cd-hint">If this email already exists, the existing candidate profile is reused. A candidate can only be submitted once per job.</p>
           </>
@@ -337,9 +343,9 @@ function SubmitCandidateModal({
 // Detail drawer
 // ---------------------------------------------------------------------------
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="cd-fact">
+    <div className={wide ? 'cd-fact cd-fact-wide' : 'cd-fact'}>
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
@@ -607,6 +613,16 @@ function SubmissionDrawer({
                 <OfferCtcFact token={token} submission={submission} canEdit={permissions.can_update_status && !permissions.is_vendor_user} onChanged={onChanged} />
               </Fact>
             )}
+            {submission.submitted_by_email && (
+              <Fact label="Submitted by" wide>
+                <span className="cd-submitter">
+                  <span className="cd-submitter-name">{submission.submitted_by_name}</span>
+                  <span className={`cd-submitter-type cd-submitter-${(submission.submitted_by_type ?? 'team').toLowerCase()}`}>{submission.submitted_by_type}</span>
+                  {submission.submitted_by_role && <span className="cd-submitter-role">{submission.submitted_by_role}</span>}
+                </span>
+                <span className="cd-submitter-email">Login: {submission.submitted_by_email}</span>
+              </Fact>
+            )}
           </dl>
           {submission.notes && <p className="cd-notes"><strong>Notes:</strong> {submission.notes}</p>}
         </section>
@@ -615,6 +631,7 @@ function SubmissionDrawer({
           <h3>Candidate profile</h3>
           <dl className="cd-facts">
             <Fact label="Phone">{submission.phone ? <a href={`tel:${submission.phone}`}>{submission.phone}</a> : 'Not provided'}</Fact>
+            <Fact label="PAN number">{submission.pan_number || 'Not provided'}</Fact>
             <Fact label="Current location">{submission.current_location || 'Not provided'}</Fact>
             <Fact label="Total experience">{experience(submission.total_experience)}</Fact>
             <Fact label="Relevant experience">{experience(submission.relevant_experience)}</Fact>
@@ -937,6 +954,11 @@ export default function CandidatesPage({
                         <button type="button" className="cd-link" onClick={() => setVendor(item.vendor_id == null ? 'internal' : String(item.vendor_id))} title="Show only this vendor’s candidates">
                           {item.vendor_id == null ? 'Internal (direct)' : item.vendor_name ?? `Vendor #${item.vendor_id}`}
                         </button>
+                        {item.submitted_by_name && (
+                          <small className="cd-sub cd-by" title={item.submitted_by_email ?? undefined}>
+                            by {item.submitted_by_name} · {item.submitted_by_type}
+                          </small>
+                        )}
                       </td>
                     )}
                     <td><CandidateStatusBadge status={item.status} /></td>

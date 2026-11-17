@@ -24,7 +24,7 @@ function Bars({ data, bucket }: { data: RevenueSummary['buckets']; bucket: 'day'
         return (
           <g key={slot.key}>
             {barHeight > 0 && (
-              <rect x={x} y={height - barHeight} width={step * 0.64} height={barHeight} rx="3" fill="#2f6b2f">
+              <rect x={x} y={height - barHeight} width={step * 0.64} height={barHeight} rx="3" fill="var(--brand-navy, #0b2a5b)">
                 <title>{`${slot.key}: ${rupees(slot.revenue)} from ${slot.joins} join${slot.joins === 1 ? '' : 's'}`}</title>
               </rect>
             )}

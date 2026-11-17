@@ -39,7 +39,7 @@ function RecruiterDetail({
             <h2 id="rb-detail-title">{recruiter.name}</h2>
             <p>{recruiter.email}</p>
           </div>
-          <button type="button" className="job-modal-close" aria-label="Close recruiter details" onClick={onClose}>×</button>
+          <button type="button" className="job-modal-close" aria-label="Close TAS details" onClick={onClose}>×</button>
         </div>
 
         <div className="rb-stats">
@@ -180,7 +180,7 @@ export default function RecruiterBoard({
           unassigned_open_positions: Number(result?.unassigned_open_positions) || 0,
         })
       })
-      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Unable to load recruiters.'))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Unable to load TAS performance.'))
     return () => {
       cancelled = true
     }
@@ -189,19 +189,19 @@ export default function RecruiterBoard({
   const selected = data?.recruiters.find((recruiter) => recruiter.id === selectedId) ?? null
 
   return (
-    <section className="vx-card rb-card" aria-label="Recruiter performance">
+    <section className="vx-card rb-card" aria-label="TAS performance">
       <div className="vx-card-head">
-        <h2>Recruiter Performance</h2>
+        <h2>TAS Performance</h2>
         <span className="vx-card-sub">{periodLabel}</span>
       </div>
-      <p className="rb-caption">Ranked by closures (Selected, Offer Accepted or Joined).</p>
+      <p className="rb-caption">Talent Acquisition Specialists (TAS), ranked by closures (Selected, Offer Accepted or Joined).</p>
 
       {error ? (
         <p className="vx-empty">{error}</p>
       ) : data === null ? (
-        <p className="vx-empty">Loading recruiters…</p>
+        <p className="vx-empty">Loading TAS…</p>
       ) : data.recruiters.length === 0 ? (
-        <p className="vx-empty">No recruiter logins yet. Add recruiters on the Users page, then assign them positions on the Jobs page.</p>
+        <p className="vx-empty">No Talent Acquisition Specialist (TAS) logins yet. Add them on the Users page, then assign them positions on the Jobs page.</p>
       ) : (
         <ol className="rb-cards">
           {data.recruiters.map((recruiter, index) => (
@@ -226,7 +226,7 @@ export default function RecruiterBoard({
 
       {data !== null && data.unassigned_open_positions > 0 && (
         <p className="rb-unassigned">
-          {plural(data.unassigned_open_positions, 'open position')} {data.unassigned_open_positions === 1 ? 'has' : 'have'} no recruiter.
+          {plural(data.unassigned_open_positions, 'open position')} {data.unassigned_open_positions === 1 ? 'has' : 'have'} no TAS.
           {onOpenJobs && <button type="button" className="cd-link" onClick={onOpenJobs}>Assign on the Jobs page</button>}
         </p>
       )}
