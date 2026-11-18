@@ -1,3 +1,4 @@
+import ResumePreview from './ResumePreview'
 import { useEffect, useMemo, useState } from 'react'
 import { formatCtc } from '../positionFormat'
 import {
@@ -519,6 +520,7 @@ function SubmissionDrawer({
   onFilterVendor: (vendorId: number | 'internal') => void
   onChanged: (message: string) => Promise<void>
 }) {
+  const [showCv, setShowCv] = useState(true)
   const [history, setHistory] = useState<SubmissionHistoryEntry[] | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [historyVersion, setHistoryVersion] = useState(0)
@@ -647,6 +649,24 @@ function SubmissionDrawer({
             </div>
           )}
         </section>
+
+        {submission.resume_file_name && token && (
+          <section className="cd-drawer-section" aria-label="Resume">
+            <div className="cd-cv-head">
+              <h3>CV</h3>
+              <button type="button" className="cd-link" onClick={() => setShowCv((shown) => !shown)} aria-expanded={showCv}>
+                {showCv ? 'Hide CV' : 'Show CV'}
+              </button>
+            </div>
+            {showCv && (
+              <ResumePreview
+                key={`${submission.id}-${submission.resume_file_name}`}
+                fileName={submission.resume_file_name}
+                load={() => fetchSubmissionResume(token, submission.id)}
+              />
+            )}
+          </section>
+        )}
 
         <section className="cd-drawer-section">
           <h3>Status</h3>

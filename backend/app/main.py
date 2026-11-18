@@ -13,6 +13,7 @@ from app.recruiters import router as recruiters_router
 from app.reports import router as reports_router
 from app.feedback import router as feedback_router
 from app.revenue import router as revenue_router
+from app.talent import router as talent_router
 
 # Websites allowed to call this API. On a hosted demo set CORS_ORIGINS to the site's
 # address, e.g. https://vms-demo.onrender.com (comma-separate several).
@@ -53,3 +54,4 @@ app.include_router(recruiters_router)
 app.include_router(reports_router)
 app.include_router(feedback_router)
 app.include_router(revenue_router)
+app.include_router(talent_router)

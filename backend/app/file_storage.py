@@ -80,3 +80,14 @@ def file_response(db: Session, folder: Path, key: str | None, media_type: str, f
     if path is None or not path.is_file():
         return None
     return FileResponse(path, media_type=media_type, filename=filename, content_disposition_type="inline", headers=headers)
+
+
+def read_bytes(db: Session, folder: Path, key: str | None) -> bytes | None:
+    """The stored file's content, or None if it cannot be found."""
+    if key and key.startswith(DB_PREFIX):
+        row = db.get(StoredFile, key[len(DB_PREFIX):])
+        return row.content if row is not None else None
+    path = _disk_path(folder, key)
+    if path is None or not path.is_file():
+        return None
+    return path.read_bytes()
