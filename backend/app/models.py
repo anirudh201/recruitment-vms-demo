@@ -14,7 +14,6 @@ from sqlalchemy import (
     Table,
     Column,
     DateTime,
-    Date,
     Integer,
     Text,
     CheckConstraint,

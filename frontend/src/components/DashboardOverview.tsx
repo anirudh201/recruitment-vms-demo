@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Skeleton } from './Loading'
 import type { CandidateSubmission, Client, Job } from '../api/client'
 import { DROPPED_STATUSES, PERIOD_LABELS, PLACED_STATUSES, computeDashboard, getPeriodRange, niceTicks, type Period } from '../dashboardStats'
 import RecruiterBoard from './RecruiterBoard'
@@ -39,6 +40,7 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 // ---------------------------------------------------------------------------
 
+
 function Kpi({
   label,
   value,
@@ -57,10 +59,14 @@ function Kpi({
   const body = (
     <>
       <span className="vx-kpi-label">{label}</span>
-      <strong className="vx-kpi-value">{loading ? '—' : value.toLocaleString()}</strong>
-      <span className={`vx-kpi-note vx-kpi-note-${tone}`}>
-        <span aria-hidden="true">{tone === 'up' ? '↑' : tone === 'down' ? '—' : ''}</span> {loading ? '' : note}
-      </span>
+      <strong className="vx-kpi-value" aria-busy={loading}>{loading ? <><Skeleton width={64} height={40} /><span className="sr-only">Loading</span></> : value.toLocaleString()}</strong>
+      {loading ? (
+        <span className="vx-kpi-note"><Skeleton width={110} height={12} /></span>
+      ) : (
+        <span className={`vx-kpi-note vx-kpi-note-${tone}`}>
+          <span aria-hidden="true">{tone === 'up' ? '↑' : tone === 'down' ? '—' : ''}</span> {note}
+        </span>
+      )}
     </>
   )
   return onClick ? (
@@ -72,7 +78,7 @@ function Kpi({
   )
 }
 
-function PipelineDonut({ inProcess, placed, dropped, total, pct }: { inProcess: number; placed: number; dropped: number; total: number; pct: number }) {
+function PipelineDonut({ inProcess, placed, dropped, total, pct, loading = false }: { inProcess: number; placed: number; dropped: number; total: number; pct: number; loading?: boolean }) {
   const radius = 50
   const circumference = 2 * Math.PI * radius
   const segments = [
@@ -89,10 +95,11 @@ function PipelineDonut({ inProcess, placed, dropped, total, pct }: { inProcess: 
     }, [])
 
   return (
-    <section className="vx-card vx-donut-card" aria-label="Candidate pipeline">
+    <section className={`vx-card vx-donut-card${loading ? ' vx-loading' : ''}`} aria-label="Candidate pipeline" aria-busy={loading}>
       <svg className="vx-donut" viewBox="0 0 140 140" role="img" aria-label={`${pct}% of submissions are in process`}>
         <circle className="vx-donut-track" cx="70" cy="70" r={radius} />
-        {arcs.map((arc) => (
+        {loading && <circle className="vx-donut-spin" cx="70" cy="70" r={radius} strokeDasharray={`${circumference * 0.22} ${circumference}`} />}
+        {!loading && arcs.map((arc) => (
           <circle
             key={arc.key}
             className={`vx-donut-seg ${arc.className}`}
@@ -105,14 +112,14 @@ function PipelineDonut({ inProcess, placed, dropped, total, pct }: { inProcess: 
           />
         ))}
         <text className="vx-donut-center" x="70" y="76" textAnchor="middle">
-          {pct}%
+          {loading ? '' : <>{pct}%</>}
         </text>
       </svg>
       <dl className="vx-donut-legend">
-        <div><dt><i className="vx-dot vx-seg-inprocess" />In Process:</dt><dd>{inProcess}</dd></div>
-        <div><dt><i className="vx-dot vx-seg-placed" />Placed:</dt><dd>{placed}</dd></div>
-        <div><dt><i className="vx-dot vx-seg-dropped" />Dropped:</dt><dd>{dropped}</dd></div>
-        <div className="vx-donut-total"><dt>Total:</dt><dd>{total}</dd></div>
+        <div><dt><i className="vx-dot vx-seg-inprocess" />In Process:</dt><dd>{loading ? <Skeleton width={22} /> : inProcess}</dd></div>
+        <div><dt><i className="vx-dot vx-seg-placed" />Placed:</dt><dd>{loading ? <Skeleton width={22} /> : placed}</dd></div>
+        <div><dt><i className="vx-dot vx-seg-dropped" />Dropped:</dt><dd>{loading ? <Skeleton width={22} /> : dropped}</dd></div>
+        <div className="vx-donut-total"><dt>Total:</dt><dd>{loading ? <Skeleton width={22} /> : total}</dd></div>
       </dl>
     </section>
   )
@@ -201,13 +208,13 @@ export default function DashboardOverview({
     <div className="vx-dash">
       <div className="vx-toolbar">
         <button type="button" className="vx-pill" onClick={onOpenVendors}>
-          Active Vendors <strong>{loading ? '—' : activeVendors}</strong>
+          Active Vendors <strong>{loading ? <Skeleton width={16} height={12} /> : activeVendors}</strong>
         </button>
         <button type="button" className="vx-pill" onClick={onOpenClients}>
-          Active Clients <strong>{loading ? '—' : activeClients}</strong>
+          Active Clients <strong>{loading ? <Skeleton width={16} height={12} /> : activeClients}</strong>
         </button>
         <button type="button" className="vx-pill vx-pill-action" onClick={onRefresh} disabled={loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
+          {loading ? <><span className="vx-spinner" aria-hidden="true" />Refreshing…</> : 'Refresh'}
         </button>
       </div>
 
@@ -253,6 +260,7 @@ export default function DashboardOverview({
           dropped={stats.pipeline.dropped}
           total={stats.pipeline.total}
           pct={stats.pipeline.inProcessPct}
+          loading={loading}
         />
       </div>
 
@@ -278,7 +286,13 @@ export default function DashboardOverview({
               View All
             </button>
           </div>
-          {stats.topJobs.length === 0 ? (
+          {loading && stats.topJobs.length === 0 ? (
+            <ol className="vx-job-list" aria-busy="true">
+              {[0, 1, 2].map((key) => (
+                <li key={key} className="vx-skel-row"><Skeleton width="55%" height={16} /><Skeleton width="35%" height={12} /></li>
+              ))}
+            </ol>
+          ) : stats.topJobs.length === 0 ? (
             <p className="vx-empty">No active jobs yet. Jobs with the status “open” appear here.</p>
           ) : (
             <ol className="vx-job-list">
@@ -322,7 +336,11 @@ export default function DashboardOverview({
               <h2>Submissions by Stage</h2>
               <span className="vx-card-sub">{periodLabel}</span>
             </div>
-            {visibleStages.length === 0 ? (
+            {loading && visibleStages.length === 0 ? (
+              <ul className="vx-stage-list" aria-busy="true">
+                {[0, 1, 2, 3].map((key) => <li key={key}><Skeleton width={90} height={12} /><Skeleton width="100%" height={8} /><Skeleton width={18} height={12} /></li>)}
+              </ul>
+            ) : visibleStages.length === 0 ? (
               <p className="vx-empty">No submissions in this period.</p>
             ) : (
               <ul className="vx-stage-list">

@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import file_storage
 from app.candidates import (
-    MAX_RESUME_BYTES,
     RESUME_TYPES,
     RESUME_UPLOAD_DIR,
     CandidateDetails,
@@ -23,7 +22,7 @@ from app.candidates import (
 )
 from app.db_dependencies import get_db
 from app.dependencies import require_permission
-from app.models import Candidate, CandidateSubmission, Job, User
+from app.models import Candidate, CandidateSubmission, User
 from app.partner_access import is_client_user, is_partner_user
 from app.resume_parser import extract_text_variants, parse_resume
 

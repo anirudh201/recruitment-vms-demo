@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoadingNote } from './Loading'
 
 // Shows a resume inside the page: PDFs in the browser's own viewer, Word (DOCX) files
 // converted to a clean, read-only page. The Word converter loads only when needed.
@@ -54,7 +55,7 @@ export default function ResumePreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileName])
 
-  if (state.kind === 'loading') return <div className="rp-preview rp-preview-msg" style={{ minHeight: 120 }}>Loading the resume…</div>
+  if (state.kind === 'loading') return <div className="rp-preview rp-preview-msg" style={{ minHeight: 120 }}><LoadingNote>Loading the resume…</LoadingNote></div>
   if (state.kind === 'error') return <div className="rp-preview rp-preview-msg rp-preview-error" role="alert">{state.message}</div>
   if (state.kind === 'pdf') {
     return <iframe className="rp-preview rp-preview-pdf" style={{ height }} title={`Resume: ${fileName}`} src={state.url} />

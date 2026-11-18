@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Skeleton, SkeletonTable, Spinner } from './Loading'
 import { formatDateTime } from '../dashboardStats'
 import { initials } from '../profileUtils'
 import {
@@ -122,7 +123,7 @@ function UserProfileDrawer({
                   {user.is_active ? 'Deactivate' : 'Activate'}
                 </button>
               )}
-              <button type="submit" disabled={!changed || saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+              <button type="submit" disabled={!changed || saving}>{saving ? <><Spinner />Saving…</> : 'Save changes'}</button>
             </div>
           </form>
         </section>
@@ -261,7 +262,7 @@ export default function UsersPage({
         <div className="jobs-heading">
           <div>
             <h2>Accounts</h2>
-            <p>{users === null ? 'Loading users…' : `${mine.length} account(s) in your organization`}</p>
+            <p>{users === null ? <><Spinner />Loading users…</> : `${mine.length} account(s) in your organization`}</p>
           </div>
           <div className="jobs-actions">
             <button data-tour="add-user" type="button" onClick={openForm}>+ Add User</button>
@@ -278,7 +279,7 @@ export default function UsersPage({
               onClick={() => setRoleFilter(tab)}
             >
               <span>{tab === 'all' ? 'All users' : ROLE_LABEL[tab] ?? tab}</span>
-              <strong>{tab === 'all' ? mine.length : countFor(tab)}</strong>
+              <strong>{users === null ? <Skeleton width={26} height={20} /> : tab === 'all' ? mine.length : countFor(tab)}</strong>
             </button>
           ))}
         </div>
@@ -292,7 +293,9 @@ export default function UsersPage({
           onChange={(event) => setSearch(event.target.value)}
         />
 
-        {users !== null && visible.length === 0 ? (
+        {users === null ? (
+          <SkeletonTable rows={5} columns={5} label="Loading users…" />
+        ) : visible.length === 0 ? (
           <div className="cd-empty"><strong>No users match.</strong></div>
         ) : (
           <div className="jobs-table-wrapper">
@@ -330,7 +333,7 @@ export default function UsersPage({
                           aria-label={`${user.is_active ? 'Deactivate' : 'Activate'} ${user.email}`}
                           onClick={() => void toggleActive(user)}
                         >
-                          {busyUser === user.id ? 'Saving…' : user.is_active ? 'Deactivate' : 'Activate'}
+                          {busyUser === user.id ? <><Spinner />Saving…</> : user.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                       )}
                     </td>
@@ -414,7 +417,7 @@ export default function UsersPage({
             {formError && <p className="error-message" role="alert">{formError}</p>}
             <div className="cd-modal-actions">
               <button type="button" className="cd-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-              <button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create login'}</button>
+              <button type="submit" disabled={saving}>{saving ? <><Spinner />Creating…</> : 'Create login'}</button>
             </div>
           </form>
         </div>

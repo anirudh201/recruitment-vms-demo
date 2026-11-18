@@ -3,6 +3,34 @@
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '')
 export const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true'
 
+// How many requests to the server are in progress, so the page can show a loading bar.
+let requestsInFlight = 0
+const activityListeners = new Set<(count: number) => void>()
+
+export function onNetworkActivity(listener: (count: number) => void): () => void {
+  activityListeners.add(listener)
+  listener(requestsInFlight)
+  return () => {
+    activityListeners.delete(listener)
+  }
+}
+
+function announceActivity() {
+  for (const listener of activityListeners) listener(requestsInFlight)
+}
+
+// fetch() that also counts itself as "in progress" until the server answers.
+async function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  requestsInFlight += 1
+  announceActivity()
+  try {
+    return await window.fetch(input, init)
+  } finally {
+    requestsInFlight -= 1
+    announceActivity()
+  }
+}
+
 export type LoginResponse = {
   access_token: string
   token_type: string
@@ -702,10 +730,6 @@ export async function fetchSubmissionResume(token: string, submissionId: number)
     throw new Error(typeof data.detail === 'string' ? data.detail : `Unable to open the resume (${response.status}).`)
   }
   return response.blob()
-}
-
-export function setUserName(token: string, userId: number, fullName: string | null): Promise<UserAccount> {
-  return sendCandidateRequest<UserAccount>(`/users/${userId}/profile`, token, 'PATCH', { full_name: fullName })
 }
 
 // ---------------------------------------------------------------------------

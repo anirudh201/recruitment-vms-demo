@@ -1,4 +1,5 @@
 import ResumePreview from './ResumePreview'
+import { LoadingNote, SkeletonTable, Spinner } from './Loading'
 import { useEffect, useMemo, useState } from 'react'
 import { formatCtc } from '../positionFormat'
 import {
@@ -279,7 +280,7 @@ function SubmitCandidateModal({
                     <button type="button" className="rs-remove" onClick={() => { setResumeFile(null); setResumeNote(null) }}>Remove</button>
                   )}
                   <label className={`rs-pick${reading ? ' rs-busy' : ''}`}>
-                    {reading ? 'Reading resume…' : resumeFile ? 'Replace' : 'Upload resume'}
+                    {reading ? <><Spinner />Reading resume…</> : resumeFile ? 'Replace' : 'Upload resume'}
                     <input
                       type="file"
                       hidden
@@ -333,7 +334,7 @@ function SubmitCandidateModal({
 
         <div className="cd-modal-actions">
           <button type="button" className="cd-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" disabled={saving || jobs.length === 0}>{saving ? 'Submitting…' : 'Submit candidate'}</button>
+          <button type="submit" disabled={saving || jobs.length === 0}>{saving ? <><Spinner />Submitting…</> : 'Submit candidate'}</button>
         </div>
       </form>
     </div>
@@ -411,7 +412,7 @@ function ResumeFact({
 
   const picker = (label: string) => (
     <label className="cd-link rs-inline-pick">
-      {busy ? 'Uploading…' : label}
+      {busy ? <><Spinner />Uploading…</> : label}
       <input type="file" hidden aria-label={label} accept=".pdf,.docx" onChange={(event) => void attach(event)} disabled={busy} />
     </label>
   )
@@ -481,7 +482,7 @@ function OfferCtcFact({
       <span className="rv-ctc-edit">
         <input aria-label="Annual CTC offered in lakhs" type="number" min="0.1" step="0.1" placeholder="e.g. 12.5" value={lakhs} onChange={(event) => setLakhs(event.target.value)} />
         <span>LPA</span>
-        <button type="button" className="cd-link" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="cd-link" disabled={busy} onClick={() => void save()}>{busy ? <><Spinner />Saving…</> : 'Save'}</button>
         <button type="button" className="cd-link" onClick={() => setEditing(false)}>Cancel</button>
         {error && <small className="rs-error" role="alert">{error}</small>}
       </span>
@@ -682,7 +683,7 @@ function SubmissionDrawer({
                 <span>Note (optional)</span>
                 <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="e.g. Client liked the profile" />
               </label>
-              <button type="submit" disabled={saving || newStatus === submission.status}>{saving ? 'Updating…' : 'Update status'}</button>
+              <button type="submit" disabled={saving || newStatus === submission.status}>{saving ? <><Spinner />Updating…</> : 'Update status'}</button>
               {error && <p className="error-message" role="alert">{error}</p>}
             </form>
           ) : (
@@ -695,7 +696,7 @@ function SubmissionDrawer({
           {historyError ? (
             <p className="error-message" role="alert">{historyError}</p>
           ) : history === null ? (
-            <p className="cd-hint">Loading history…</p>
+            <LoadingNote className="cd-hint">Loading history…</LoadingNote>
           ) : (
             <ol className="cd-timeline">
               {history.map((entry) => (
@@ -863,13 +864,13 @@ export default function CandidatesPage({
         <div className="jobs-heading">
           <div>
             <h2>Candidate Submissions</h2>
-            <p>{loading ? 'Loading candidates…' : `${filtered.length} of ${submissions.length} submission(s)`}</p>
+            <p>{loading ? <><Spinner />Loading candidates…</> : `${filtered.length} of ${submissions.length} submission(s)`}</p>
           </div>
           <div className="jobs-actions">
             {permissions.can_submit && (
               <button data-tour="submit-candidate" type="button" onClick={() => { setBanner(null); setShowSubmit(true) }}>+ Submit Candidate</button>
             )}
-            <button type="button" onClick={() => void handleReload()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+            <button type="button" onClick={() => void handleReload()} disabled={loading}>{loading ? <><Spinner />Refreshing…</> : 'Refresh'}</button>
           </div>
         </div>
 
@@ -924,7 +925,9 @@ export default function CandidatesPage({
           {filtersActive && <button type="button" className="jobs-search-clear" onClick={clearFilters}>Clear filters</button>}
         </div>
 
-        {!loading && submissions.length === 0 ? (
+        {loading && submissions.length === 0 ? (
+          <SkeletonTable rows={6} columns={7} label="Loading candidates…" />
+        ) : !loading && submissions.length === 0 ? (
           <div className="cd-empty">
             <strong>{permissions.is_vendor_user ? 'You haven’t submitted any candidates yet.' : 'No candidates have been submitted yet.'}</strong>
             <p>{permissions.can_submit ? 'Use “Submit Candidate” to add the first one.' : 'Submissions from vendors will appear here.'}</p>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoadingNote, Skeleton, SkeletonCards, Spinner } from './Loading'
 import {
   fetchSubmissionResume,
   getSubmissionHistory,
@@ -81,18 +82,20 @@ export function ClientOverview({
         <div className="cp-tiles">
           <div className="cp-tile cp-tile-static">
             <span>Open positions</span>
-            <strong>{loading ? '—' : jobs.filter((job) => job.status === 'open').length}</strong>
+            <strong>{loading ? <Skeleton width={28} height={22} /> : jobs.filter((job) => job.status === 'open').length}</strong>
           </div>
           {tiles.map((tile) => (
             <button key={tile.tab} type="button" className={`cp-tile cp-tile-${tile.tab}`} onClick={() => onOpenCandidates(tile.tab)}>
               <span>{tile.label}</span>
-              <strong>{loading ? '—' : tile.value}</strong>
+              <strong>{loading ? <Skeleton width={28} height={22} /> : tile.value}</strong>
             </button>
           ))}
         </div>
 
         <h2 className="cp-section-title">Awaiting your review</h2>
-        {!loading && awaiting.length === 0 ? (
+        {loading && awaiting.length === 0 ? (
+          <SkeletonCards count={3} label="Loading candidates…" />
+        ) : !loading && awaiting.length === 0 ? (
           <p className="cd-empty-note">Nothing is waiting for you right now. New candidates will appear here when they are sent to you.</p>
         ) : (
           <ul className="cp-mini-list">
@@ -137,7 +140,9 @@ export function ClientJobsPage({
         <p>Your company’s positions and the candidates sent for each.</p>
       </header>
       <section className="welcome-card jobs-card cd-card cp-card pr-page">
-        {!loading && jobs.length === 0 ? (
+        {loading && jobs.length === 0 ? (
+          <SkeletonCards count={3} label="Loading positions…" />
+        ) : !loading && jobs.length === 0 ? (
           <div className="cd-empty"><strong>No positions yet.</strong><p>Your recruitment partner will add your requirements here.</p></div>
         ) : (
           ordered.map((job) => {
@@ -188,7 +193,7 @@ function ActivityLog({ token, submissionId, version }: { token: string | null; s
     }
   }, [token, submissionId, version])
   if (error) return <p className="error-message">{error}</p>
-  if (!entries) return <p className="cd-hint">Loading activity…</p>
+  if (!entries) return <LoadingNote className="cd-hint">Loading activity…</LoadingNote>
   return (
     <ol className="cd-timeline cp-timeline">
       {entries.map((entry) => (
@@ -311,7 +316,7 @@ function CandidateCard({
                 disabled={busy !== null}
                 onClick={() => void decide(decision)}
               >
-                {busy === decision ? 'Saving…' : DECISION_LABEL[decision]}
+                {busy === decision ? <><Spinner />Saving…</> : DECISION_LABEL[decision]}
               </button>
             ))}
           </div>
@@ -377,7 +382,9 @@ export function ClientCandidatesPage({
           </select>
         </div>
 
-        {!loading && visible.length === 0 ? (
+        {loading && visible.length === 0 ? (
+          <SkeletonCards count={3} label="Loading candidates…" />
+        ) : !loading && visible.length === 0 ? (
           <div className="cd-empty">
             <strong>{tab === 'review' ? 'Nothing is waiting for your review.' : 'No candidates here.'}</strong>
             <p>{submissions.length === 0 ? 'Candidates appear here once your recruitment partner sends them to you.' : 'Try another tab or position.'}</p>

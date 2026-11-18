@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Skeleton } from './Loading'
 import { getRevenue, type RevenueSummary } from '../api/client'
 
 const rupees = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
@@ -74,7 +75,7 @@ export default function RevenueCard({
       {error ? (
         <p className="vx-empty">{error}</p>
       ) : !data ? (
-        <p className="vx-empty">Loading revenue…</p>
+        <div className="rv-loading" role="status" aria-label="Loading revenue…"><Skeleton width={150} height={34} /><Skeleton width="100%" height={110} /><Skeleton width="70%" height={12} /></div>
       ) : (
         <>
           <div className="rv-total">

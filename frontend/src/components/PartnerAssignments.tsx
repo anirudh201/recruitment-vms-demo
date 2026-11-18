@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Spinner } from './Loading'
 import {
   assignVendorToJob,
   unassignVendorFromJob,
@@ -170,7 +171,7 @@ export function JobPartnersModal({
         <div className="cd-modal-actions">
           <button type="button" className="cd-secondary" onClick={onClose}>Cancel</button>
           <button type="button" disabled={saving || (toAdd.length === 0 && toRemove.length === 0)} onClick={() => void handleSave()}>
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? <><Spinner />Saving…</> : 'Save changes'}
           </button>
         </div>
       </section>
@@ -260,7 +261,7 @@ export function PartnerRequirementsModal({
                 setJobToAdd('')
               })}
             >
-              {busy === 'add' ? 'Assigning…' : 'Assign'}
+              {busy === 'add' ? <><Spinner />Assigning…</> : 'Assign'}
             </button>
           </div>
         ) : (
@@ -290,7 +291,7 @@ export function PartnerRequirementsModal({
                       disabled={busy !== null}
                       onClick={() => void run(`remove-${job.id}`, () => unassignVendorFromJob(token as string, job.id, vendor.id))}
                     >
-                      {busy === `remove-${job.id}` ? 'Removing…' : 'Remove'}
+                      {busy === `remove-${job.id}` ? <><Spinner />Removing…</> : 'Remove'}
                     </button>
                   </li>
                 ))}

@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
+import { SkeletonTable, Spinner } from './components/Loading'
 import DashboardOverview from './components/DashboardOverview'
 import CandidatesPage, { type CandidateFilters } from './components/CandidatesPage'
 import { JobPartnersModal, PartnerRequirementsModal } from './components/PartnerAssignments'
@@ -275,6 +276,16 @@ function App() {
 
   const [loading, setLoading] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
+  // After a few seconds of signing in, explain the wait (a sleeping free server can take up to a minute to wake).
+  const [loginSlow, setLoginSlow] = useState(false)
+  useEffect(() => {
+    if (!loginLoading) return
+    const timer = window.setTimeout(() => setLoginSlow(true), 4000)
+    return () => {
+      window.clearTimeout(timer)
+      setLoginSlow(false)
+    }
+  }, [loginLoading])
   const [saving, setSaving] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
@@ -1045,9 +1056,12 @@ async function handleSaveJob(
                     Forgot password?
                   </button>
                 </div>
-                <button type="submit" className="lp-primary" disabled={loginLoading}>
-                  {loginLoading ? 'Signing in…' : 'Sign in'}
+                <button type="submit" className="lp-primary" disabled={loginLoading} aria-busy={loginLoading}>
+                  {loginLoading ? <><span className="lp-spinner" aria-hidden="true" />Signing in…</> : 'Sign in'}
                 </button>
+                {loginLoading && loginSlow && (
+                  <p className="lp-slow" role="status">Still working… the server may be waking up. This can take up to a minute, please wait.</p>
+                )}
                 <label className="lp-remember">
                   <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
                   Remember me
@@ -1067,7 +1081,7 @@ async function handleSaveJob(
                   onChange={(event) => setResetEmail(event.target.value)}
                 />
                 <button type="submit" className="lp-primary" disabled={authBusy}>
-                  {authBusy ? 'Sending…' : 'Send reset link'}
+                  {authBusy ? <><span className="lp-spinner" aria-hidden="true" />Sending…</> : 'Send reset link'}
                 </button>
                 <button type="button" className="lp-link lp-back" onClick={() => { setAuthView('login'); setError(null); setAuthMessage(null) }}>
                   ← Back to sign in
@@ -1098,7 +1112,7 @@ async function handleSaveJob(
                 onChange={(event) => setConfirmPassword(event.target.value)}
               />
               <button type="submit" className="lp-primary" disabled={authBusy}>
-                {authBusy ? 'Resetting…' : 'Reset password'}
+                {authBusy ? <><Spinner />Resetting…</> : 'Reset password'}
               </button>
               <button type="button" className="lp-link lp-back" onClick={() => { setAuthView('login'); setError(null); setAuthMessage(null) }}>
                 ← Back to sign in
@@ -1407,7 +1421,7 @@ async function handleSaveJob(
         ) : page === 'feedback' && canManageUsers && token ? (
           <FeedbackPage token={token} onCountChange={setFeedbackNew} />
         ) : page === 'talent' && !partnerView && !isClient && token ? (
-          <TalentVaultPage token={token} canAdd />
+          <TalentVaultPage token={token} canAdd={candidatePermissions.can_submit} />
         ) : page === 'reports' && !partnerView && !isClient ? (
           <ReportsPage token={token} clients={clients} />
         ) : page === 'users' && canManageUsers && me ? (
@@ -1490,7 +1504,7 @@ async function handleSaveJob(
                   <h2>Job Requirements</h2>
                   <p>
                     {loading
-                      ? 'Loading job records...'
+                      ? <><Spinner />Loading job records…</>
                       : `${jobs.filter((job) => ((jobFilter === 'all' || job.status === 'open') && jobListed(job)) && (!jobSearch.trim() || [job.title, String(job.id), job.status, String(job.client_id ?? ''), job.location, job.description].some((value) => String(value ?? '').toLowerCase().includes(jobSearch.trim().toLowerCase())))).length} job record(s)`}
                   </p>
                 </div>
@@ -1516,7 +1530,7 @@ async function handleSaveJob(
                       onClick={() => token && void loadDashboard(token)}
                       disabled={loading}
                     >
-                      {loading ? 'Refreshing...' : 'Refresh jobs'}
+                      {loading ? <><Spinner />Refreshing…</> : 'Refresh jobs'}
                     </button>
                   </div>
               </div>
@@ -1663,13 +1677,13 @@ async function handleSaveJob(
 
                   <div className="form-actions job-form-actions">
                     <button type="button" onClick={cancelJobForm} disabled={savingJob}>Cancel</button>
-                    <button type="submit" disabled={savingJob}>{savingJob ? 'Saving…' : editingJobId !== null ? 'Save changes' : 'Save job'}</button>
+                    <button type="submit" disabled={savingJob}>{savingJob ? <><Spinner />Saving…</> : editingJobId !== null ? 'Save changes' : 'Save job'}</button>
                   </div>
                 </form>
               )}
 
               {loading ? (
-                <p role="status">Loading jobs from the backend...</p>
+                <SkeletonTable rows={6} columns={8} label="Loading jobs…" />
               ) : jobs.length === 0 ? (
                 <p>No jobs were returned by the API.</p>
               ) : (
@@ -1794,7 +1808,7 @@ async function handleSaveJob(
                                 aria-label={`${job.is_active === false ? 'Activate' : 'Deactivate'} job ${job.title}`}
                                 onClick={() => void toggleActive('job', job.id, job.title, job.is_active === false)}
                               >
-                                {togglingId === `job-${job.id}` ? 'Saving…' : job.is_active === false ? 'Activate' : 'Deactivate'}
+                                {togglingId === `job-${job.id}` ? <><Spinner />Saving…</> : job.is_active === false ? 'Activate' : 'Deactivate'}
                               </button>
                             </td>
                           )}
@@ -1836,7 +1850,7 @@ async function handleSaveJob(
                   <h2>Vendor Directory</h2>
                   <p>
                     {loading
-                      ? 'Loading vendor records...'
+                      ? <><Spinner />Loading vendor records…</>
                       : `${filteredVendors.length} matching vendor record(s)`}
                   </p>
                 </div>
@@ -1861,7 +1875,7 @@ async function handleSaveJob(
                     onClick={() => token && void loadDashboard(token)}
                     disabled={loading}
                   >
-                    {loading ? 'Refreshing...' : 'Refresh vendors'}
+                    {loading ? <><Spinner />Refreshing…</> : 'Refresh vendors'}
                   </button>
                 </div>
               </div>
@@ -1959,7 +1973,7 @@ async function handleSaveJob(
 
                         <div className="form-actions">
                           <button type="submit" disabled={saving}>
-                            {saving ? 'Registering...' : 'Register Vendor'}
+                            {saving ? <><Spinner />Registering…</> : 'Register Vendor'}
                           </button>
 
                           <button
@@ -1976,7 +1990,7 @@ async function handleSaveJob(
 
 
               {loading ? (
-                <p role="status">Loading vendors from the backend...</p>
+                <SkeletonTable rows={4} columns={7} label="Loading vendors…" />
               ) : vendors.length === 0 ? (
                 <p>No vendor records were returned by the API. Use “Add Vendor” to register the first vendor.</p>
               ) : filteredVendors.length === 0 ? (
@@ -2046,7 +2060,7 @@ async function handleSaveJob(
                                 aria-label={`${vendor.is_active ? 'Deactivate' : 'Activate'} partner ${vendor.name}`}
                                 onClick={() => void toggleActive('vendor', vendor.id, vendor.name, !vendor.is_active)}
                               >
-                                {togglingId === `vendor-${vendor.id}` ? 'Saving…' : vendor.is_active ? 'Deactivate' : 'Activate'}
+                                {togglingId === `vendor-${vendor.id}` ? <><Spinner />Saving…</> : vendor.is_active ? 'Deactivate' : 'Activate'}
                               </button>
                             </td>
                           )}
@@ -2100,7 +2114,7 @@ async function handleSaveJob(
                   <h2>Client Companies</h2>
                   <p>
                     {loading
-                      ? 'Loading client records...'
+                      ? <><Spinner />Loading client records…</>
                       : `${filteredClients.length} matching client record(s)`}
                   </p>
                 </div>
@@ -2414,7 +2428,7 @@ async function handleSaveJob(
 
                   <div className="form-actions">
                     <button type="submit" disabled={saving}>
-                      {saving ? 'Saving...' : 'Save Contact'}
+                      {saving ? <><Spinner />Saving…</> : 'Save Contact'}
                     </button>
 
                     <button
@@ -2503,7 +2517,7 @@ async function handleSaveJob(
 
     <div className="form-actions">
       <button type="submit" disabled={saving}>
-        {saving ? 'Saving...' : 'Save Contact'}
+        {saving ? <><Spinner />Saving…</> : 'Save Contact'}
       </button>
 
       <button
@@ -2522,7 +2536,7 @@ async function handleSaveJob(
 )}
 
               {loading ? (
-                <p role="status">Loading clients from the backend...</p>
+                <SkeletonTable rows={4} columns={7} label="Loading clients…" />
               ) : clients.length === 0 ? (
                 <p>No client records were returned by the API.</p>
               ) : (
@@ -2677,7 +2691,7 @@ async function handleSaveJob(
                                   aria-label={`${client.is_active ? 'Deactivate' : 'Activate'} client ${client.company_name}`}
                                   onClick={() => void toggleActive('client', client.id, client.company_name, !client.is_active)}
                                 >
-                                  {togglingId === `client-${client.id}` ? 'Saving…' : client.is_active ? 'Deactivate' : 'Activate'}
+                                  {togglingId === `client-${client.id}` ? <><Spinner />Saving…</> : client.is_active ? 'Deactivate' : 'Activate'}
                                 </button>
                               )}
                               {!canManageJobs && !canManageClients && <span className="cd-muted">View only</span>}

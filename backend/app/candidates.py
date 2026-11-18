@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session, selectinload
 from app.db_dependencies import get_db
 from app.dependencies import get_current_user, require_permission
 from app.models import (
-    CANDIDATE_STATUSES,
     Candidate,
     CandidateStatusHistory,
     CandidateSubmission,
@@ -653,11 +652,9 @@ def record_client_decision(
 # ---------------------------------------------------------------------------
 
 import os as _os
-import uuid as _uuid
 from pathlib import Path as _Path
 
 from fastapi import File, UploadFile
-from fastapi.responses import FileResponse
 
 from app.resume_parser import parse_resume
 from app import file_storage
@@ -687,13 +684,6 @@ async def _read_resume_upload(file: UploadFile) -> tuple[str, str, bytes]:
         raise HTTPException(status_code=422, detail="The file content does not match its extension. Please upload a real PDF or DOCX.")
     return original or f"resume{extension}", extension, content
 
-
-def _resume_path(stored_name: str | None) -> _Path | None:
-    if not stored_name:
-        return None
-    base = RESUME_UPLOAD_DIR.resolve()
-    candidate = (base / stored_name).resolve()
-    return candidate if base in candidate.parents else None
 
 
 @router.post("/parse-resume")

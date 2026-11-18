@@ -1,4 +1,5 @@
 import { JD_ACCEPT, canPreviewJd, jdKind } from '../jdFiles'
+import { LoadingNote, Spinner } from './Loading'
 import { useEffect, useState } from 'react'
 import { fetchJobJDFile, uploadJobJDFile, type Job } from '../api/client'
 
@@ -483,7 +484,7 @@ function OriginalFileBar({
 
   const attachInput = (label: string) => (
     <label className="jd-file-button jd-file-button-secondary">
-      {busy === 'upload' ? 'Uploading…' : label}
+      {busy === 'upload' ? <><Spinner />Uploading…</> : label}
       <input
         type="file"
         hidden
@@ -504,7 +505,7 @@ function OriginalFileBar({
           </div>
           <div className="jd-file-actions">
             <button type="button" className="jd-file-button" disabled={busy !== null} onClick={() => void handleOpen('open')}>
-              {busy === 'open' ? 'Opening…' : isPdf ? 'Open original' : kind === 'image' ? 'Open image' : kind === 'word' ? 'Open in Word' : 'Open'}
+              {busy === 'open' ? <><Spinner />Opening…</> : isPdf ? 'Open original' : kind === 'image' ? 'Open image' : kind === 'word' ? 'Open in Word' : 'Open'}
             </button>
             <button
               type="button"
@@ -512,7 +513,7 @@ function OriginalFileBar({
               disabled={busy !== null}
               onClick={() => void handleOpen('download')}
             >
-              {busy === 'download' ? 'Downloading…' : 'Download'}
+              {busy === 'download' ? <><Spinner />Downloading…</> : 'Download'}
             </button>
             {canManage && attachInput('Replace file')}
           </div>
@@ -564,7 +565,7 @@ function OriginalPreview({ job, token }: { job: Job; token: string | null }) {
 
   if (!token) return <p className="jd-original-message">Your session has expired. Please sign in again.</p>
   if (error) return <p className="jd-original-message jd-file-error" role="alert">{error}</p>
-  if (!src) return <p className="jd-original-message">Loading original JD…</p>
+  if (!src) return <LoadingNote className="jd-original-message">Loading original JD…</LoadingNote>
   if (jdKind(job.jd_file_name) === 'image') {
     return (
       <div className="jd-original-image-wrap">

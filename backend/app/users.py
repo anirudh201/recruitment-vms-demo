@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db_dependencies import get_db
 from app.dependencies import require_permission
@@ -242,7 +242,10 @@ def list_users(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_permission("users.manage")),
 ):
-    query = select(User).order_by(User.id)
+    # Load roles, partner company and client company with the users (instead of per user).
+    query = select(User).options(
+        selectinload(User.roles), selectinload(User.vendor), selectinload(User.client)
+    ).order_by(User.id)
 
     # Super Admin can view all organizations.
     # Other authorized users can view only their own organization.

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SkeletonCards, Spinner } from './Loading'
 import type { CandidateSubmission, Job } from '../api/client'
 
 type Props = {
@@ -120,7 +121,7 @@ export default function PartnerRequirementsPage({
         <div className="jobs-heading">
           <div>
             <h2>Your Requirements</h2>
-            <p>{loading ? 'Loading requirements…' : `${plural(jobs.filter((job) => job.status === 'open').length, 'open requirement')}${canSeeClients ? '' : ' · client details are shared by your account manager'}`}</p>
+            <p>{loading ? <><Spinner />Loading requirements…</> : `${plural(jobs.filter((job) => job.status === 'open').length, 'open requirement')}${canSeeClients ? '' : ' · client details are shared by your account manager'}`}</p>
           </div>
         </div>
 
@@ -133,7 +134,9 @@ export default function PartnerRequirementsPage({
           onChange={(event) => setSearch(event.target.value)}
         />
 
-        {!loading && jobs.length === 0 ? (
+        {loading && jobs.length === 0 ? (
+          <SkeletonCards count={3} label="Loading requirements…" />
+        ) : !loading && jobs.length === 0 ? (
           <div className="cd-empty">
             <strong>No requirements are assigned to your company yet.</strong>
             <p>Your account manager will assign requirements to you here.</p>

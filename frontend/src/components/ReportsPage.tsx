@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { LoadingNote, SkeletonTable, Spinner } from './Loading'
 import {
   downloadReportExcel,
   getReport,
@@ -248,12 +249,14 @@ export default function ReportsPage({ token, clients }: { token: string | null; 
             {failed ? '' : data ? (data.total === 0 ? 'No rows match these filters.' : `Showing ${firstRow.toLocaleString('en-IN')}–${lastRow.toLocaleString('en-IN')} of ${data.total.toLocaleString('en-IN')} rows`) : 'Loading report…'}
           </p>
           <button type="button" className="rp-download" disabled={downloading || !data || data.total === 0} onClick={() => void download()}>
-            {downloading ? 'Preparing Excel…' : `Download Excel${data && data.total > 0 ? ` (${data.total.toLocaleString('en-IN')} rows)` : ''}`}
+            {downloading ? <><Spinner />Preparing Excel…</> : `Download Excel${data && data.total > 0 ? ` (${data.total.toLocaleString('en-IN')} rows)` : ''}`}
           </button>
         </div>
         {downloadError && <p className="error-message" role="alert">{downloadError}</p>}
         {failed && <p className="error-message" role="alert">{failed}</p>}
 
+        {!data && !failed && <SkeletonTable rows={8} columns={7} label="Loading report…" />}
+        {data && loading && <LoadingNote>Updating the report…</LoadingNote>}
         {data && data.total > 0 && (
           <div className={`jobs-table-wrapper rp-table-wrap${loading ? ' rp-loading' : ''}`}>
             <table className="jobs-table rp-table" aria-busy={loading}>
