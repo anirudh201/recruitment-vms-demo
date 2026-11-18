@@ -1,6 +1,6 @@
 """Candidate profile and job-submission API endpoints."""
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import HTTPException
@@ -746,6 +746,12 @@ async def upload_submission_resume(
     item.resume_file_name = original[:300]
     item.resume_file_path = stored_name
     item.resume_content_type = RESUME_TYPES[extension][0]
+    # Keep the resume's text on the candidate so TalentVault can search inside it.
+    from app.talent import resume_text_of
+    text = resume_text_of(original, content)
+    if text:
+        item.candidate.resume_text = text
+    item.candidate.updated_at = datetime.now(timezone.utc)
     try:
         db.commit()
     except Exception:

@@ -7,6 +7,7 @@ import PartnerRequirementsPage from './components/PartnerRequirementsPage'
 import UsersPage from './components/UsersPage'
 import ProfilePage from './components/ProfilePage'
 import ReportsPage from './components/ReportsPage'
+import TalentVaultPage from './components/TalentVaultPage'
 import FeedbackButton from './components/FeedbackButton'
 import FeedbackPage from './components/FeedbackPage'
 import LoginBrand from './components/LoginBrand'
@@ -116,7 +117,7 @@ function initialLoginRole(): LoginRole {
 
 const NO_CANDIDATE_PERMISSIONS: CandidatePermissions = { can_submit: false, can_update_status: false, is_vendor_user: false, can_see_clients: true }
 
-type Page = 'dashboard' | 'jobs' | 'clients' | 'vendors' | 'candidates' | 'users' | 'profile' | 'reports' | 'feedback'
+type Page = 'dashboard' | 'jobs' | 'clients' | 'vendors' | 'candidates' | 'talent' | 'users' | 'profile' | 'reports' | 'feedback'
  
 type VendorForm = {
   name: string
@@ -1279,6 +1280,17 @@ async function handleSaveJob(
             Candidates
           </a>
 
+          {!partnerView && !isClient && (
+            <a
+              href="#talent"
+              className={page === 'talent' ? 'active' : ''}
+              onClick={() => setPage('talent')}
+              data-tour="talent-nav"
+            >
+              TalentVault
+            </a>
+          )}
+
           {!partnerView && !isClient && canViewVendors && (
             <a
               href="#vendors"
@@ -1394,6 +1406,8 @@ async function handleSaveJob(
           />
         ) : page === 'feedback' && canManageUsers && token ? (
           <FeedbackPage token={token} onCountChange={setFeedbackNew} />
+        ) : page === 'talent' && !partnerView && !isClient && token ? (
+          <TalentVaultPage token={token} canAdd />
         ) : page === 'reports' && !partnerView && !isClient ? (
           <ReportsPage token={token} clients={clients} />
         ) : page === 'users' && canManageUsers && me ? (

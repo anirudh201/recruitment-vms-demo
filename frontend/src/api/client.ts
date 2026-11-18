@@ -895,3 +895,107 @@ export function getRevenue(token: string, range: { start: Date; end: Date }, buc
 export function setOfferedCtc(token: string, submissionId: number, offeredCtc: number | null): Promise<CandidateSubmission> {
   return sendCandidateRequest<CandidateSubmission>(`/candidates/submissions/${submissionId}/offer`, token, 'PATCH', { offered_ctc: offeredCtc })
 }
+
+// ---------------------------------------------------------------------------
+// TalentVault (resume bank) — DM&I team only
+// ---------------------------------------------------------------------------
+export type TalentCard = {
+  id: number
+  full_name: string
+  email: string
+  phone: string | null
+  total_experience: number | null
+  relevant_experience: number | null
+  current_location: string | null
+  current_employer: string | null
+  highest_qualification: string | null
+  skills: string[]
+  source: string | null
+  added_by: string | null
+  created_at: string
+  updated_at: string | null
+  submissions: number
+  last_job_title: string | null
+  last_status: string | null
+  last_submitted_at: string | null
+  cv_kind: 'profile' | 'submission' | null
+  cv_id: number | null
+  cv_name: string | null
+  resume_match: string | null
+}
+
+export type TalentSearch = {
+  q?: string
+  match?: 'all' | 'any'
+  location?: string
+  min_exp?: string
+  max_exp?: string
+  employer?: string
+  qualification?: string
+  has_cv?: boolean
+  active_days?: string
+  sort?: 'recent' | 'experience' | 'name'
+  page?: number
+  page_size?: number
+}
+
+export type TalentSearchResult = { total: number; page: number; pages: number; page_size: number; items: TalentCard[] }
+export type TalentSummary = { profiles: number; added_last_30_days: number; with_resume_text: number }
+export type BulkResult = {
+  results: Array<{ file: string; status: 'added' | 'updated' | 'skipped' | 'error'; message: string; candidate_id?: number }>
+  added: number
+  updated: number
+  skipped: number
+  error: number
+}
+
+export function searchTalent(token: string, search: TalentSearch): Promise<TalentSearchResult> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(search)) {
+    if (value === undefined || value === null || value === '' || value === false) continue
+    params.set(key, String(value))
+  }
+  return request(`/talent/search?${params.toString()}`, token)
+}
+
+export function getTalentSummary(token: string): Promise<TalentSummary> {
+  return request('/talent/summary', token)
+}
+
+export function addTalentProfile(token: string, input: Omit<SubmitCandidateInput, 'job_id' | 'notes'>): Promise<TalentCard> {
+  return request('/talent/candidates', token, { method: 'POST', body: JSON.stringify(input) })
+}
+
+export function uploadTalentResume(token: string, candidateId: number, file: File): Promise<TalentCard> {
+  return sendFile(`/talent/candidates/${candidateId}/resume`, token, file)
+}
+
+export async function bulkUploadTalent(token: string, files: File[]): Promise<BulkResult> {
+  const formData = new FormData()
+  for (const file of files) formData.append('files', file)
+  const response = await fetch(`${API_BASE_URL}/talent/bulk`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    body: formData,
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Your session has expired. Please sign in again.')
+    throw new Error(typeof data.detail === 'string' ? data.detail : `Upload failed (${response.status}).`)
+  }
+  return data as BulkResult
+}
+
+export function reindexTalent(token: string): Promise<{ indexed: number; checked: number }> {
+  return request('/talent/reindex', token, { method: 'POST' })
+}
+
+export async function fetchTalentResume(token: string, card: Pick<TalentCard, 'cv_kind' | 'cv_id'>): Promise<Blob> {
+  const path = card.cv_kind === 'profile' ? `/talent/candidates/${card.cv_id}/resume` : `/candidates/submissions/${card.cv_id}/resume`
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(typeof data.detail === 'string' ? data.detail : `Unable to open the resume (${response.status}).`)
+  }
+  return response.blob()
+}

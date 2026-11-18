@@ -369,13 +369,31 @@ class Candidate(Base):
     highest_qualification: Mapped[str | None] = mapped_column(String(300), nullable=True)
     primary_skills: Mapped[str | None] = mapped_column(Text, nullable=True)
     resume_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # TalentVault (resume bank): searchable resume text, a resume kept on the profile itself
+    # (for resumes added straight to the database), where the profile came from, and when it changed.
+    resume_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    profile_resume_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    profile_resume_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    profile_resume_type: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    added_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
         nullable=False,
     )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=True,
+    )
 
+    added_by: Mapped["User | None"] = relationship(foreign_keys=[added_by_user_id])
     submissions: Mapped[list["CandidateSubmission"]] = relationship(
         back_populates="candidate",
         cascade="all, delete-orphan",

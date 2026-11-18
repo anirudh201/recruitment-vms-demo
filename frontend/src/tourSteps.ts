@@ -1,7 +1,7 @@
 // The Super Admin's guided tour. Each step highlights one part of a page.
 // Edit the wording here; "target" is a CSS selector for the part to highlight.
 
-export type TourPage = 'dashboard' | 'jobs' | 'candidates' | 'vendors' | 'clients' | 'users' | 'feedback' | 'reports'
+export type TourPage = 'dashboard' | 'jobs' | 'candidates' | 'talent' | 'vendors' | 'clients' | 'users' | 'feedback' | 'reports'
 
 export type TourStep = { page: TourPage; section: string; target: string; title: string; body: string }
 
@@ -38,6 +38,13 @@ export const TOUR_STEPS: TourStep[] = [
     body: 'Narrow the list by job, client, partner or status, or search by name.' },
   { page: 'candidates', section: 'Candidates', target: 'main .cd-table', title: 'Work on a candidate',
     body: 'Click View to open a candidate: move them through the stages (Screening, Shortlisted, Sent to Client and so on), download their resume, enter the annual CTC offered, and see the full history.' },
+
+  { page: 'talent', section: 'TalentVault', target: '.tv-search', title: 'Search the resume bank',
+    body: 'TalentVault is DM&I’s own resume database. Search by skills, company or any word inside a resume (separate keywords with commas), and narrow by location, experience, employer and qualification.' },
+  { page: 'talent', section: 'TalentVault', target: '.tv-head-actions', title: 'Add resumes',
+    body: 'Add resume saves one candidate without submitting them to a job; the form fills itself from the resume. Bulk upload adds up to 25 resumes at once.' },
+  { page: 'talent', section: 'TalentVault', target: '.tv-pager-row', title: 'Results',
+    body: 'Show 20, 40 or 80 profiles a page. Each card shows experience, location, education and key skills, with matches highlighted. View phone number reveals the number; CV opens the resume.' },
 
   { page: 'vendors', section: 'Vendors', target: '[data-tour="add-vendor"]', title: 'Channel partners',
     body: 'Register the staffing partners who send you candidates. Give them a login on the Users page so they can submit.' },
