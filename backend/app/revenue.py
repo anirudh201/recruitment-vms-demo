@@ -4,7 +4,8 @@ A candidate earns DM&I a fee when they JOIN:
     revenue = annual CTC x fee %
 - annual CTC: the CTC recorded on the candidate's submission, or else the job's offered CTC
 - fee %: the client's own fee %, or else DEFAULT_FEE_PERCENT (8.33%, one month's salary)
-Revenue is dated by the day the candidate first reached "Joined".
+Revenue is dated by the day the candidate first reached "Joined". Only closures count:
+the candidate must have been Sent to Client before joining (app/closures.py).
 """
 import os
 from datetime import datetime, timedelta, timezone
@@ -13,9 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.closures import closure_dates
 from app.db_dependencies import get_db
 from app.dependencies import require_permission
-from app.models import CandidateStatusHistory, CandidateSubmission, Job, User
+from app.models import CandidateSubmission, Job, User
 
 router = APIRouter(prefix="/revenue", tags=["Revenue"])
 
@@ -63,20 +65,14 @@ def revenue(
             Job.is_active.is_(True),
         )
     ).all()
-    joined_at: dict[int, datetime] = {}
-    for submission_id, changed_at in db.execute(
-        select(CandidateStatusHistory.submission_id, CandidateStatusHistory.changed_at).where(
-            CandidateStatusHistory.submission_id.in_([item.id for item in joined] or [-1]),
-            CandidateStatusHistory.new_status == "Joined",
-        )
-    ).all():
-        changed_at = _utc(changed_at)
-        if submission_id not in joined_at or changed_at < joined_at[submission_id]:
-            joined_at[submission_id] = changed_at
+    # first "Joined" after being sent to the client; joins never sent to the client are not counted
+    joined_at = closure_dates(db, [item.id for item in joined], status="Joined")
 
     items = []
     for item in joined:
-        when = joined_at.get(item.id) or _utc(item.updated_at)
+        when = joined_at.get(item.id)
+        if when is None:
+            continue
         if (start and when < start) or (end and when >= end):
             continue
         job = item.job

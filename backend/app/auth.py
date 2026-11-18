@@ -14,8 +14,8 @@ from app.db_dependencies import get_db
 from app.dependencies import get_current_user, require_permission
 from app.models import User
 from app.security import (
-    ACCESS_TOKEN_EXPIRE_MINUTES, JWT_ALGORITHM, JWT_SECRET_KEY,
-    create_access_token, hash_password, verify_password,
+    JWT_ALGORITHM, JWT_SECRET_KEY,
+    create_access_token, hash_password, password_fingerprint, verify_password,
 )
 
 
@@ -89,7 +89,8 @@ def forgot_password(
 
     now = datetime.now(timezone.utc)
     reset_token = jwt.encode(
-        {"sub": str(user.id), "purpose": "password_reset", "iat": now, "exp": now + timedelta(minutes=30)},
+        {"sub": str(user.id), "purpose": "password_reset", "pwd": password_fingerprint(user.password_hash),
+         "iat": now, "exp": now + timedelta(minutes=30)},
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM,
     )
@@ -121,7 +122,8 @@ def reset_password(
         raise HTTPException(status_code=400, detail="This password-reset link is invalid or expired. Request a new link.") from exc
 
     user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    # The link is tied to the password it was issued for, so it works once only.
+    if user is None or not user.is_active or claims.get("pwd") != password_fingerprint(user.password_hash):
         raise HTTPException(status_code=400, detail="This password-reset link is invalid or expired. Request a new link.")
     user.password_hash = hash_password(payload.new_password)
     db.add(user)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { SkeletonCards, Spinner } from './Loading'
 import {
   addTalentProfile,
   bulkUploadTalent,
@@ -255,7 +256,7 @@ export default function TalentVaultPage({ token, canAdd }: { token: string; canA
 
         <div className="tv-pager-row">
           <span className="tv-count">
-            {loading ? 'Searching…' : result ? `${result.total.toLocaleString('en-IN')} profile${result.total === 1 ? '' : 's'} found` : ''}
+            {loading ? <><Spinner />Searching…</> : result ? `${result.total.toLocaleString('en-IN')} profile${result.total === 1 ? '' : 's'} found` : ''}
           </span>
           <div className="tv-pager">
             <label>Show
@@ -281,6 +282,7 @@ export default function TalentVaultPage({ token, canAdd }: { token: string; canA
           <p className="tv-empty">No profiles match this search. Try fewer keywords, choose “Any keyword”, or clear the filters.</p>
         )}
 
+        {loading && items.length === 0 && <SkeletonCards count={4} label="Searching TalentVault…" />}
         <ol className="tv-list" aria-busy={loading}>
           {items.map((card) => (
             <li key={card.id}>
@@ -459,7 +461,7 @@ function AddResumeModal({ token, onClose, onSaved }: { token: string; onClose: (
           <div className="tv-upload">
             <div>
               <strong>{file ? file.name : 'Resume'}</strong>
-              <small>{reading ? 'Reading the resume…' : 'PDF or DOCX, up to 10 MB. Details below are filled in from it.'}</small>
+              <small>{reading ? <><Spinner />Reading the resume…</> : 'PDF or DOCX, up to 10 MB. Details below are filled in from it.'}</small>
             </div>
             <input ref={fileInput} type="file" accept=".pdf,.docx" hidden onChange={(event) => void pick(event)} />
             <button type="button" onClick={() => fileInput.current?.click()} disabled={reading}>{file ? 'Choose another' : 'Upload resume'}</button>
@@ -479,7 +481,7 @@ function AddResumeModal({ token, onClose, onSaved }: { token: string; onClose: (
           {error && <p className="error-message" role="alert">{error}</p>}
           <div className="cd-modal-actions">
             <button type="button" className="tv-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving || reading}>{saving ? 'Saving…' : 'Add to TalentVault'}</button>
+            <button type="submit" disabled={saving || reading}>{saving ? <><Spinner />Saving…</> : 'Add to TalentVault'}</button>
           </div>
         </form>
       </section>
@@ -525,7 +527,7 @@ function BulkUploadModal({ token, onClose, onDone }: { token: string; onClose: (
             {error && <p className="error-message" role="alert">{error}</p>}
             <div className="cd-modal-actions">
               <button type="button" className="tv-secondary" onClick={onClose}>Cancel</button>
-              <button type="button" onClick={() => void upload()} disabled={busy || !files.length}>{busy ? 'Uploading and reading…' : 'Upload'}</button>
+              <button type="button" onClick={() => void upload()} disabled={busy || !files.length}>{busy ? <><Spinner />Uploading and reading…</> : 'Upload'}</button>
             </div>
           </>
         ) : (

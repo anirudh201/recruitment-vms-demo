@@ -1,18 +1,16 @@
 import os
 import re
-import uuid
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db_dependencies import get_db
-from app.dependencies import get_current_user, require_permission
+from app.dependencies import require_permission
 from app.models import Client, Job, JobVendorAssignment, User, Vendor
 from app.partner_access import hide_clients_from, is_client_user, is_partner_user, permission_codes
 from app import file_storage
@@ -109,21 +107,6 @@ def _reflow_fragmented_lines(lines: list[str]) -> list[str]:
     if buffer:
         merged.append(" ".join(buffer))
     return merged
-
-
-def _jd_file_path(stored_name: str | None) -> Path | None:
-    """Resolve a stored JD file name, refusing anything outside JD_UPLOAD_DIR."""
-    if not stored_name:
-        return None
-    base = JD_UPLOAD_DIR.resolve()
-    candidate = (base / stored_name).resolve()
-    return candidate if base in candidate.parents else None
-
-
-def _delete_jd_file(stored_name: str | None) -> None:
-    path = _jd_file_path(stored_name)
-    if path is not None:
-        path.unlink(missing_ok=True)
 
 
 @router.post("/parse-jd")
@@ -360,7 +343,8 @@ def is_super_admin(user: User) -> bool:
     return any(role.name == "Super Admin" for role in user.roles)
 
 
-def can_view_job(db: Session, user: User, job: Job) -> bool:
+def can_view_job(db: Session, user: User, job: Job, assigned_job_ids: set[int] | None = None) -> bool:
+    """assigned_job_ids: the partner's active job assignments, when already loaded (saves a query per job)."""
     if is_super_admin(user):
         return True
 
@@ -377,6 +361,9 @@ def can_view_job(db: Session, user: User, job: Job) -> bool:
     if any(role.name == "Vendor" for role in user.roles):
         if user.vendor_id is None:
             return False
+
+        if assigned_job_ids is not None:
+            return job.id in assigned_job_ids
 
         assignment = db.scalar(
             select(JobVendorAssignment.id).where(
@@ -452,8 +439,19 @@ def list_jobs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("jobs.view")),
 ):
-    jobs = db.scalars(select(Job).order_by(Job.id.desc())).all()
-    return [_job_for(current_user, job) for job in jobs if can_view_job(db, current_user, job)]
+    # Load each job's client and TAS together with the jobs (instead of one query per job).
+    jobs = db.scalars(
+        select(Job).options(selectinload(Job.client), selectinload(Job.recruiter)).order_by(Job.id.desc())
+    ).all()
+    assigned_job_ids = None
+    if current_user.vendor_id is not None and any(role.name == "Vendor" for role in current_user.roles):
+        assigned_job_ids = set(db.scalars(
+            select(JobVendorAssignment.job_id).where(
+                JobVendorAssignment.vendor_id == current_user.vendor_id,
+                JobVendorAssignment.is_active.is_(True),
+            )
+        ).all())
+    return [_job_for(current_user, job) for job in jobs if can_view_job(db, current_user, job, assigned_job_ids)]
 
 
 def _job_for(user: User, job: Job) -> JobResponse:

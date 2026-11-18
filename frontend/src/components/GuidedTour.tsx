@@ -61,6 +61,8 @@ export default function GuidedTour({
     let cancelled = false
     let tries = 0
     let timer = 0
+    let frame = 0
+    let observer: ResizeObserver | null = null
     const look = () => {
       if (cancelled) return
       const element = document.querySelector(step.target)
@@ -69,6 +71,18 @@ export default function GuidedTour({
         const tall = element.getBoundingClientRect().height > window.innerHeight * 0.7
         element.scrollIntoView?.({ block: tall ? 'start' : 'center', inline: 'nearest', behavior: 'smooth' })
         timer = window.setTimeout(() => !cancelled && setFound({ index, box: visibleBox(element) }), 420)
+        // The part may still be filling in (e.g. data arriving from the server) and the page may
+        // shift around it: measure again whenever it or the page changes size.
+        if (typeof ResizeObserver !== 'undefined') {
+          observer = new ResizeObserver(() => {
+            cancelAnimationFrame(frame)
+            frame = requestAnimationFrame(() => {
+              if (!cancelled && element.isConnected) setFound({ index, box: visibleBox(element) })
+            })
+          })
+          observer.observe(element)
+          observer.observe(document.body)
+        }
       } else if (tries++ < 40) {
         timer = window.setTimeout(look, 100)   // the page may still be loading
       } else {
@@ -80,6 +94,8 @@ export default function GuidedTour({
     return () => {
       cancelled = true
       window.clearTimeout(timer)
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
     }
   }, [index, step.page, step.target, currentPage, onNavigate])
 

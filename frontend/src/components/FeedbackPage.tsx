@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoadingNote, Skeleton, Spinner } from './Loading'
 import { downloadFeedbackExcel, listFeedback, updateFeedback, type FeedbackItem, type FeedbackStatus } from '../api/client'
 import { formatDateTime } from '../dashboardStats'
 import { FEEDBACK_KIND_LABEL, FEEDBACK_STATUS_LABEL } from '../feedbackLabels'
@@ -46,7 +47,7 @@ function FeedbackRow({ token, item, number, onChanged }: { token: string; item: 
               <textarea rows={2} value={note} maxLength={5000} onChange={(event) => setNote(event.target.value)} />
             </label>
             <button type="button" className="fbp-save" disabled={busy || note === (item.admin_note ?? '')} onClick={() => void save({ admin_note: note.trim() || null })}>
-              {busy ? 'Saving…' : 'Save reply'}
+              {busy ? <><Spinner />Saving…</> : 'Save reply'}
             </button>
             {item.browser && <p className="fbp-browser"><strong>Browser:</strong> {item.browser}</p>}
           </div>
@@ -118,7 +119,7 @@ export default function FeedbackPage({ token, onCountChange }: { token: string; 
           {['', ...STATUSES].map((value) => (
             <button key={value || 'all'} type="button" className={`cd-tile${status === value ? ' active' : ''}`} aria-pressed={status === value} onClick={() => setStatus(value)}>
               <span>{value ? FEEDBACK_STATUS_LABEL[value] : 'All'}</span>
-              <strong>{value ? count(value) : all.length}</strong>
+              <strong>{items === null && !error ? <Skeleton width={26} height={20} /> : value ? count(value) : all.length}</strong>
             </button>
           ))}
         </div>
@@ -130,11 +131,11 @@ export default function FeedbackPage({ token, onCountChange }: { token: string; 
             <option value="other">Other</option>
           </select>
           <button type="button" className="rp-download" disabled={downloading || visible.length === 0} onClick={() => void download()}>
-            {downloading ? 'Preparing Excel…' : `Download Excel (${visible.length})`}
+            {downloading ? <><Spinner />Preparing Excel…</> : `Download Excel (${visible.length})`}
           </button>
         </div>
         {items === null && !error ? (
-          <p className="cd-hint">Loading feedback…</p>
+          <LoadingNote>Loading feedback…</LoadingNote>
         ) : visible.length === 0 ? (
           <div className="cd-empty"><strong>{all.length === 0 ? 'No feedback yet.' : 'Nothing matches these filters.'}</strong><p>Everyone can send feedback with the Feedback button at the bottom right.</p></div>
         ) : (

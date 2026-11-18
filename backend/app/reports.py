@@ -28,12 +28,12 @@ from app.models import (
     User,
     Vendor,
 )
+from app.closures import closure_dates, is_closure
 from app.partner_access import is_client_user, is_partner_user
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 PAGE_SIZE_MAX = 100
-CLOSED = {"Selected", "Offer Accepted", "Joined"}
 IN_PROCESS = {"Submitted", "Screening", "Shortlisted", "Sent to Client", "Interview Scheduled"}
 SHORTLISTED_OR_LATER = {"Shortlisted", "Sent to Client", "Interview Scheduled", "Selected", "Offer Accepted", "Joined"}
 
@@ -87,16 +87,13 @@ class Ctx:
             .order_by(CandidateSubmission.created_at.desc(), CandidateSubmission.id.desc())
         ).all()
         self.reached: dict[int, set[str]] = {}
-        self.first_closed: dict[int, datetime] = {}
-        for submission_id, status, changed_at in db.execute(
-            select(CandidateStatusHistory.submission_id, CandidateStatusHistory.new_status, CandidateStatusHistory.changed_at)
+        for submission_id, status in db.execute(
+            select(CandidateStatusHistory.submission_id, CandidateStatusHistory.new_status)
             .where(CandidateStatusHistory.submission_id.in_([item.id for item in self.subs] or [-1]))
         ).all():
             self.reached.setdefault(submission_id, set()).add(status)
-            if status in CLOSED:
-                changed_at = _utc(changed_at)
-                if submission_id not in self.first_closed or changed_at < self.first_closed[submission_id]:
-                    self.first_closed[submission_id] = changed_at
+        # closures: sent to the client, then selected (app/closures.py)
+        self.first_closed: dict[int, datetime] = closure_dates(db, [item.id for item in self.subs])
         self.assignments = db.execute(
             select(JobVendorAssignment.job_id, JobVendorAssignment.vendor_id).where(
                 JobVendorAssignment.job_id.in_(list(self.job_by_id) or [-1]), JobVendorAssignment.is_active.is_(True)
@@ -138,8 +135,8 @@ def _counts(ctx: Ctx, subs: list[CandidateSubmission]) -> dict:
         "shortlisted": sum(1 for item in subs if ctx.ever(item, SHORTLISTED_OR_LATER)),
         "sent_to_client": sum(1 for item in subs if ctx.ever(item, {"Sent to Client"})),
         "interviews": sum(1 for item in subs if ctx.ever(item, {"Interview Scheduled"})),
-        "closures": sum(1 for item in subs if item.status in CLOSED),
-        "joined": sum(1 for item in subs if item.status == "Joined"),
+        "closures": sum(1 for item in subs if is_closure(item, ctx.first_closed)),
+        "joined": sum(1 for item in subs if item.status == "Joined" and is_closure(item, ctx.first_closed)),
     }
 
 
@@ -184,7 +181,7 @@ def build_closures(ctx: Ctx) -> list[dict]:
     rows = []
     for item in ctx.subs:
         closed_on = ctx.first_closed.get(item.id)
-        if item.status in CLOSED and ctx.in_period(closed_on):
+        if is_closure(item, ctx.first_closed) and ctx.in_period(closed_on):
             rows.append({
                 "candidate": item.candidate.full_name,
                 **ctx.job_fields(item.job_id),
@@ -287,7 +284,7 @@ REPORTS: dict[str, Report] = {
             C("partner", "Partner"), C("submitted_by", "Submitted by"), C("recruiter", "TAS"), C("status", "Status"), C("experience", "Total exp. (yrs)", "number"),
             C("employer", "Current employer"), C("location", "Location"), C("submitted_on", "Submitted on", "date"), C("updated_on", "Last updated", "date"),
         ], build_submissions),
-        Report("closures", "Closures", "Candidates who reached Selected, Offer Accepted or Joined in the period (dated by when they first got there).", [
+        Report("closures", "Closures", "Candidates who were sent to the client and then reached Selected, Offer Accepted or Joined in the period (dated by when they first got there).", [
             C("candidate", "Candidate"), C("position", "Position"), C("client", "Client"), C("partner", "Partner"),
             C("recruiter", "TAS"), C("stage", "Stage"), C("closed_on", "Closed on", "date"),
         ], build_closures),
@@ -509,7 +506,7 @@ def _workbook(report: Report, rows: list[dict], ctx: Ctx, client_name: str | Non
         (report.description, font),
         ("", font),
         ("Definitions", bold),
-        ("Closure: a candidate whose current stage is Selected, Offer Accepted or Joined.", font),
+        ("Closure: a candidate sent to the client whose current stage is Selected, Offer Accepted or Joined.", font),
         ("Sent to client / Interviews / Shortlisted or later: the candidate reached that stage at some point.", font),
         ("Closure rate: closures ÷ submissions (a formula, so it updates if you edit the numbers).", font),
         ("Deactivated jobs (e.g. test data) are not included.", font),

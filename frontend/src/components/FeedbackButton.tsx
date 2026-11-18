@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoadingNote, Spinner } from './Loading'
 import { getMyFeedback, sendFeedback, type FeedbackItem, type FeedbackKind } from '../api/client'
 import { formatDateTime } from '../dashboardStats'
 import { FEEDBACK_KIND_LABEL, FEEDBACK_STATUS_LABEL } from '../feedbackLabels'
@@ -101,13 +102,13 @@ function FeedbackDialog({ token, pageLabel, onClose }: { token: string; pageLabe
             {notice && <p className={notice.kind === 'success' ? 'success-message' : 'error-message'} role={notice.kind === 'success' ? 'status' : 'alert'}>{notice.text}</p>}
             <div className="cd-modal-actions">
               <button type="button" className="cd-secondary" onClick={onClose}>Close</button>
-              <button type="submit" disabled={sending}>{sending ? 'Sending…' : 'Send'}</button>
+              <button type="submit" disabled={sending}>{sending ? <><Spinner />Sending…</> : 'Send'}</button>
             </div>
           </form>
         ) : (
           <div className="fb-mine">
             {mine === null ? (
-              <p className="cd-hint">Loading…</p>
+              <LoadingNote className="cd-hint">Loading…</LoadingNote>
             ) : mine.length === 0 ? (
               <p className="cd-empty-note">You haven’t sent any feedback yet.</p>
             ) : (

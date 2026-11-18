@@ -1,6 +1,5 @@
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import check_database_connection
 

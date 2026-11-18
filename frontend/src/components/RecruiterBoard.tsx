@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SkeletonCards } from './Loading'
 import { getRecruiterPerformance, type RecruiterPerformance } from '../api/client'
 import { formatDate } from '../dashboardStats'
 
@@ -194,12 +195,12 @@ export default function RecruiterBoard({
         <h2>TAS Performance</h2>
         <span className="vx-card-sub">{periodLabel}</span>
       </div>
-      <p className="rb-caption">Talent Acquisition Specialists (TAS), ranked by closures (Selected, Offer Accepted or Joined).</p>
+      <p className="rb-caption">Talent Acquisition Specialists (TAS), ranked by closures: candidates sent to the client who then reached Selected, Offer Accepted or Joined.</p>
 
       {error ? (
         <p className="vx-empty">{error}</p>
       ) : data === null ? (
-        <p className="vx-empty">Loading TAS…</p>
+        <SkeletonCards count={3} label="Loading TAS performance…" />
       ) : data.recruiters.length === 0 ? (
         <p className="vx-empty">No Talent Acquisition Specialist (TAS) logins yet. Add them on the Users page, then assign them positions on the Jobs page.</p>
       ) : (

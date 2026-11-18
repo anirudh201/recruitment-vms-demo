@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Spinner } from './Loading'
 import { changeMyPassword, updateMyProfile, type Me } from '../api/client'
 import { formatDateTime } from '../dashboardStats'
 import { ROLE_NAMES, initials } from '../profileUtils'
@@ -109,7 +110,7 @@ export default function ProfilePage({ token, me, onUpdated }: { token: string | 
             >
               Undo changes
             </button>
-            <button type="submit" disabled={!changed || savingDetails}>{savingDetails ? 'Saving…' : 'Save changes'}</button>
+            <button type="submit" disabled={!changed || savingDetails}>{savingDetails ? <><Spinner />Saving…</> : 'Save changes'}</button>
           </div>
         </form>
 
@@ -139,7 +140,7 @@ export default function ProfilePage({ token, me, onUpdated }: { token: string | 
             </label>
             {notice(passwordNotice)}
             <div className="form-actions">
-              <button type="submit" disabled={savingPassword}>{savingPassword ? 'Changing…' : 'Change password'}</button>
+              <button type="submit" disabled={savingPassword}>{savingPassword ? <><Spinner />Changing…</> : 'Change password'}</button>
             </div>
           </form>
         </div>

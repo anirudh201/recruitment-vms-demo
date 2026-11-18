@@ -55,9 +55,24 @@ def create_access_token(user_id: int) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    """Validate a JWT and return its payload."""
-    return jwt.decode(
+    """Validate a sign-in JWT and return its payload.
+
+    Other tokens signed with the same key (e.g. password-reset links, which carry a
+    "purpose" claim) are refused, so they can never be used to sign in.
+    """
+    payload = jwt.decode(
         token,
         JWT_SECRET_KEY,
         algorithms=[JWT_ALGORITHM],
     )
+    if payload.get("purpose") is not None:
+        raise jwt.InvalidTokenError("Not a sign-in token")
+    return payload
+
+
+def password_fingerprint(password_hash: str) -> str:
+    """Short fingerprint of the stored password hash. A reset link carries it, so the link
+    stops working as soon as the password changes (i.e. it can be used only once)."""
+    import hashlib
+
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:16]

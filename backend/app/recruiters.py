@@ -1,8 +1,8 @@
 """Recruiter performance: who owns which positions, and how many closures each recruiter has.
 
-A closure is a candidate on a recruiter's position whose current status is Selected,
-Offer Accepted or Joined. It is dated by the first time the candidate reached one of
-those stages. Deactivated jobs (e.g. test data) are left out.
+A closure is a candidate on a recruiter's position who was Sent to Client and then reached
+Selected, Offer Accepted or Joined (see app/closures.py). It is dated by the first time the
+candidate reached one of those stages after being sent. Deactivated jobs are left out.
 """
 from datetime import datetime, timezone
 
@@ -10,10 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.closures import closure_dates, is_closure
 from app.db_dependencies import get_db
 from app.dependencies import require_permission
 from app.models import (
-    CandidateStatusHistory,
     CandidateSubmission,
     Job,
     JobVendorAssignment,
@@ -25,7 +25,6 @@ from app.partner_access import is_client_user, is_partner_user
 
 router = APIRouter(prefix="/recruiters", tags=["Recruiters"])
 
-CLOSED_STATUSES = ("Selected", "Offer Accepted", "Joined")
 IN_PROCESS_STATUSES = ("Submitted", "Screening", "Shortlisted", "Sent to Client", "Interview Scheduled")
 
 
@@ -76,16 +75,8 @@ def recruiter_performance(
         .options(selectinload(CandidateSubmission.candidate), selectinload(CandidateSubmission.vendor))
         .where(CandidateSubmission.job_id.in_(job_ids or [-1]))
     ).all()
-    first_closed = dict(
-        db.execute(
-            select(CandidateStatusHistory.submission_id, func.min(CandidateStatusHistory.changed_at))
-            .where(
-                CandidateStatusHistory.submission_id.in_([item.id for item in submissions] or [-1]),
-                CandidateStatusHistory.new_status.in_(CLOSED_STATUSES),
-            )
-            .group_by(CandidateStatusHistory.submission_id)
-        ).all()
-    )
+    # only candidates sent to the client and then selected count (app/closures.py)
+    first_closed = closure_dates(db, [item.id for item in submissions])
     assigned_partners = db.execute(
         select(JobVendorAssignment.job_id, Vendor.id, Vendor.name)
         .join(Vendor, Vendor.id == JobVendorAssignment.vendor_id)
@@ -103,7 +94,7 @@ def recruiter_performance(
         own_jobs = [job for job in jobs if job.recruiter_id == recruiter.id]
         own_job_ids = {job.id for job in own_jobs}
         own_subs = [item for item in submissions if item.job_id in own_job_ids]
-        closed = [item for item in own_subs if item.status in CLOSED_STATUSES]
+        closed = [item for item in own_subs if is_closure(item, first_closed)]
         closed_in_period = [item for item in closed if in_period(first_closed.get(item.id))]
 
         positions = []
@@ -117,7 +108,7 @@ def recruiter_performance(
                 "client_name": job.client.company_name if job.client is not None else None,
                 "openings": job.openings,
                 "submissions": len(job_subs),
-                "closures": sum(1 for item in job_subs if item.status in CLOSED_STATUSES),
+                "closures": sum(1 for item in job_subs if is_closure(item, first_closed)),
             })
 
         # closures per client (positions with no client are grouped so their closures still show)
@@ -140,7 +131,7 @@ def recruiter_performance(
                 continue
             entry = vendors.setdefault(item.vendor.id, {"id": item.vendor.id, "name": item.vendor.name, "positions": 0, "submissions": 0, "closures": 0})
             entry["submissions"] += 1
-            entry["closures"] += 1 if item.status in CLOSED_STATUSES else 0
+            entry["closures"] += 1 if is_closure(item, first_closed) else 0
 
         job_by_id = {job.id: job for job in own_jobs}
         closures = sorted(
@@ -177,7 +168,7 @@ def recruiter_performance(
                 "closures_in_period": len(closed_in_period),
                 "joined": sum(1 for item in closed if item.status == "Joined"),
                 # selected or offer accepted, not joined yet
-                "yet_to_join": sum(1 for item in own_subs if item.status in ("Selected", "Offer Accepted")),
+                "yet_to_join": sum(1 for item in closed if item.status in ("Selected", "Offer Accepted")),
                 # were selected / accepted an offer, then declined, withdrew or were rejected
                 "dropped_out": sum(1 for item in own_subs if item.id in first_closed and item.status in ("Offer Declined", "Withdrawn", "Rejected")),
             },
