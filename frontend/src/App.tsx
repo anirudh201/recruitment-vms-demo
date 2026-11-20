@@ -12,6 +12,7 @@ import TalentVaultPage from './components/TalentVaultPage'
 import FeedbackButton from './components/FeedbackButton'
 import FeedbackPage from './components/FeedbackPage'
 import LoginBrand from './components/LoginBrand'
+import LoginBackdrop from './components/LoginBackdrop'
 import GuidedTour from './components/GuidedTour'
 import { tourFor, type TourPage } from './tourSteps'
 import logo from './assets/dmi-logo.webp'
@@ -955,6 +956,7 @@ async function handleSaveJob(
         <LoginBrand />
 
         <section className="lp-side">
+          <LoginBackdrop />
           <div className="lp-card">
             {IS_DEMO && (
               <p className="demo-banner lp-demo" role="note">
