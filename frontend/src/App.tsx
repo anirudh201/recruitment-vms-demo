@@ -13,7 +13,7 @@ import FeedbackButton from './components/FeedbackButton'
 import FeedbackPage from './components/FeedbackPage'
 import LoginBrand from './components/LoginBrand'
 import GuidedTour from './components/GuidedTour'
-import { TOUR_STEPS, type TourPage } from './tourSteps'
+import { tourFor, type TourPage } from './tourSteps'
 import logo from './assets/dmi-logo.webp'
 import sidebarLogo from './assets/dmi-logo-sidebar.webp'
 import { initials } from './profileUtils'
@@ -211,6 +211,7 @@ function App() {
   const [tourOpen, setTourOpen] = useState(false)
   const tourNavigate = useCallback((target: TourPage) => setPage(target), [])
   const closeTour = useCallback(() => setTourOpen(false), [])
+  const tourSteps = tourFor(page)
   // Active recruiters (for assigning positions); empty for partner/client logins.
   const [recruiterOptions, setRecruiterOptions] = useState<Array<{ id: number; name: string }>>([])
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -2780,16 +2781,14 @@ async function handleSaveJob(
             type="button"
             data-tour="help"
             className="help-button"
-            aria-label="Help: start the guided tour"
-            onClick={() => {
-              setPage('dashboard')
-              setTourOpen(true)
-            }}
+            aria-label="Help: a guided tour of this page"
+            title="Help for this page"
+            onClick={() => setTourOpen(true)}
           >
             <span aria-hidden="true">?</span> Help
           </button>
         )}
-        {tourOpen && <GuidedTour steps={TOUR_STEPS} currentPage={page} onNavigate={tourNavigate} onClose={closeTour} />}
+        {tourOpen && tourSteps.length > 0 && <GuidedTour key={page} steps={tourSteps} currentPage={page} onNavigate={tourNavigate} onClose={closeTour} />}
         {token && me && (
           <FeedbackButton
             token={token}

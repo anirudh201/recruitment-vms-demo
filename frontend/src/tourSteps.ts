@@ -1,13 +1,14 @@
-// The Super Admin's guided tour. Each step highlights one part of a page.
+// The Super Admin's help tours. Each page has its own tour; Help shows the one for the page you are on.
+// Each step highlights one part of a page.
 // Edit the wording here; "target" is a CSS selector for the part to highlight.
 
-export type TourPage = 'dashboard' | 'jobs' | 'candidates' | 'talent' | 'vendors' | 'clients' | 'users' | 'feedback' | 'reports'
+export type TourPage = 'dashboard' | 'jobs' | 'candidates' | 'talent' | 'vendors' | 'clients' | 'users' | 'feedback' | 'reports' | 'profile'
 
 export type TourStep = { page: TourPage; section: string; target: string; title: string; body: string }
 
 export const TOUR_STEPS: TourStep[] = [
   { page: 'dashboard', section: 'Dashboard', target: 'nav[aria-label="Main navigation"]', title: 'Main menu',
-    body: 'Every part of the VMS is one click away here. This tour visits each section in order. You can leave at any time with End tour or the Esc key.' },
+    body: 'Every part of the VMS is one click away here. Each page has its own help: open a page and click Help to learn that page. You can leave at any time with End tour or the Esc key.' },
   { page: 'dashboard', section: 'Dashboard', target: '[aria-label="Job statistics"]', title: 'Job statistics',
     body: 'Your jobs, how many are active or closed, and how many candidates were submitted, with the change for the selected period. Click "Candidate Submitted" to jump to the candidates.' },
   { page: 'dashboard', section: 'Dashboard', target: '[aria-label="Candidate pipeline"]', title: 'Candidate pipeline',
@@ -51,6 +52,8 @@ export const TOUR_STEPS: TourStep[] = [
   { page: 'vendors', section: 'Vendors', target: 'main .jobs-table', title: 'Partner list',
     body: 'Use Requirements to assign jobs to a partner, Candidates to see what they submitted, and Deactivate to pause a partner (their login stops working).' },
 
+  { page: 'clients', section: 'Clients', target: '[data-tour="add-client"]', title: 'Add a client',
+    body: 'Register a new client company with its SPOC contacts. You can then add job requirements for it.' },
   { page: 'clients', section: 'Clients', target: 'main .jobs-table', title: 'Clients',
     body: 'Each client company with its SPOC contacts and positions. View JDs shows all their positions with CTC, Add Job Requirement creates one, and Edit or Deactivate manage the client. Edit Client also sets the client’s Fee % used for revenue.' },
 
@@ -69,8 +72,30 @@ export const TOUR_STEPS: TourStep[] = [
   { page: 'reports', section: 'Reports', target: '.rp-download', title: 'Download Excel',
     body: 'Downloads every row that matches your filters (all pages), ready to sort, filter and share.' },
 
-  { page: 'reports', section: 'Your account', target: 'button.sidebar-identity', title: 'Your profile',
-    body: 'Your name, designation and phone, and where you change your password.' },
-  { page: 'reports', section: 'Help', target: '[data-tour="help"]', title: 'Help is always here',
-    body: 'That’s the tour! Click Help whenever you want to see it again.' },
+  { page: 'profile', section: 'Your profile', target: '.pf-hero', title: 'Your profile',
+    body: 'Your name, role and company as others see them.' },
+  { page: 'profile', section: 'Your profile', target: 'form[aria-label="Your details"]', title: 'Your details',
+    body: 'Update your name, designation and phone, then click Save. Your email and role can only be changed by an administrator.' },
+  { page: 'profile', section: 'Your profile', target: '[aria-label="Account"]', title: 'Account',
+    body: 'When your login was created and when you last signed in.' },
+  { page: 'profile', section: 'Your profile', target: 'form[aria-label="Change password"]', title: 'Change password',
+    body: 'Enter your current password and a new one of at least 12 characters.' },
 ]
+
+/** The help tour for one page, ending with a pointer to the Help button. */
+export function tourFor(page: string): TourStep[] {
+  const steps = TOUR_STEPS.filter((step) => step.page === page)
+  if (steps.length === 0) return []
+  const section = steps[0].section
+  const extra: TourStep[] =
+    page === 'dashboard'
+      ? [{ page, section, target: 'button.sidebar-identity', title: 'Your profile',
+           body: 'Your name, designation and phone, and where you change your password.' }]
+      : []
+  return [
+    ...steps,
+    ...extra,
+    { page: page as TourPage, section, target: '[data-tour="help"]', title: 'Help on every page',
+      body: `That’s the ${section} page. Every page has its own help: open any page and click Help to learn it.` },
+  ]
+}
